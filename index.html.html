@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoachPro – Coaching Institute Management</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>@media print{body *{visibility:hidden}#receipt,#receipt *{visibility:visible}#receipt{position:absolute;left:0;top:0;width:100%}}</style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+<div id="root"></div>
+<script type="text/babel">
+const SUPA_URL="https://xfnxwciskkvpnwgsswic.supabase.co";
+const SUPA_KEY="sb_publishable_pG5uFOUCgzCo174V7HFW1w_LoYH5JV2";
+const ADMIN_EMAIL="vaibhavpandey00741@gmail.com";
+const MY_UPI_ID="future.leiutinent@okicici";
+const ADMIN_WA=""; // optional: your WhatsApp number with country code, e.g. 919876543210
+const {useState,useEffect}=React;
+const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
+const inr=n=>'₹'+Number(n||0).toLocaleString('en-IN');
+const ph=p=>{p=(p||'').replace(/\D/g,'');return p.length===10?'91'+p:p};
+const wa=(p,t)=>`https://wa.me/${ph(p)}?text=${encodeURIComponent(t)}`;
+const today=()=>new Date().toISOString().slice(0,10);
+const COURSES=['Class 10','Class 12','JEE/NEET','Foundation'];
+const BATCHES=['Morning 7 AM','Evening 4 PM'];
+const inp="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const btn=(c='indigo')=>`px-3 py-2 rounded-lg text-sm font-medium text-white bg-${c}-600 hover:bg-${c}-700`;
+const WAB=({href,children})=><a href={href} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-green-600 hover:bg-green-700 whitespace-nowrap">{children||'WhatsApp'}</a>;
+const F=({l,children})=><label className="block text-xs font-medium text-slate-600 mb-3">{l}{children}</label>;
+const Modal=({title,close,children})=><div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-2"><div className="bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-auto p-5"><div className="flex justify-between mb-3"><h3 className="font-bold text-lg">{title}</h3><button onClick={close} className="text-slate-400 text-xl">✕</button></div>{children}</div></div>;
+
+function Auth(){
+  const [m,setM]=useState('in'),[e,setE]=useState(''),[p,setP]=useState(''),[msg,setMsg]=useState('');
+  const go=async()=>{
+    setMsg('');
+    const r=m==='in'?await sb.auth.signInWithPassword({email:e,password:p}):await sb.auth.signUp({email:e,password:p});
+    if(r.error)setMsg(r.error.message); else if(m==='up'&&!r.data.session)setMsg('Account created. Check your email to confirm, then log in.');
+  };
+  return <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-600 to-violet-700">
+    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+      <h1 className="text-2xl font-bold text-indigo-700">🎓 CoachPro</h1>
+      <p className="text-sm text-slate-500 mb-4">Manage students, fees and attendance. 7-day free trial.</p>
+      <F l="Email"><input className={inp} type="email" value={e} onChange={x=>setE(x.target.value)}/></F>
+      <F l="Password"><input className={inp} type="password" value={p} onChange={x=>setP(x.target.value)}/></F>
+      {msg&&<p className="text-sm text-red-600 mb-2">{msg}</p>}
+      <button onClick={go} className={btn()+' w-full'}>{m==='in'?'Log In':'Sign Up'}</button>
+      <button onClick={()=>setM(m==='in'?'up':'in')} className="mt-3 text-sm text-indigo-600 w-full">{m==='in'?"New here? Create account":"Have an account? Log in"}</button>
+    </div></div>;
+}
+
+function Setup({reload}){
+  const [n,setN]=useState('');
+  const go=async()=>{if(!n.trim())return;const r=await sb.rpc('create_institute',{p_name:n.trim()});if(r.error)alert(r.error.message);else reload();};
+  return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow">
+    <h2 className="font-bold text-lg mb-3">Set up your institute</h2>
+    <F l="Institute Name"><input className={inp} value={n} onChange={e=>setN(e.target.value)} placeholder="e.g. Sunrise Coaching Classes"/></F>
+    <button onClick={go} className={btn()+' w-full'}>Start 7-Day Free Trial</button></div></div>;
+}
+
+function Locked({inst}){
+  const [c,setC]=useState(false);
+  const copy=()=>{navigator.clipboard&&navigator.clipboard.writeText(MY_UPI_ID);setC(true);setTimeout(()=>setC(false),1500)};
+  return <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100"><div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl text-center">
+    <div className="text-5xl">🔒</div>
+    <h2 className="text-xl font-bold mt-2">Subscription Expired or Locked</h2>
+    <p className="text-sm text-slate-500 mt-1">Access for <b>{inst.name}</b> is paused. Pay ₹999 to unlock for 30 days.</p>
+    <div className="bg-indigo-50 rounded-xl p-4 my-4"><div className="text-xs text-slate-500">GPay UPI ID</div><div className="font-mono font-bold text-indigo-700 break-all">{MY_UPI_ID}</div>
+      <button onClick={copy} className="mt-2 text-sm px-3 py-1 rounded-lg bg-white border">{c?'Copied ✓':'Copy UPI'}</button></div>
+    <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=999&cu=INR`} className={btn()+' block mb-2'}>Pay ₹999 via GPay / UPI</a>
+    <a href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi, I have paid Rs.999 for CoachPro. Institute: '+inst.name+' ('+inst.email+'). Screenshot attached.')}`} target="_blank" rel="noreferrer" className={btn('green')+' block mb-2'}>Send Payment Screenshot on WhatsApp</a>
+    <button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500 mt-2">Log out</button></div></div>;
+}
+
+function SuperAdmin(){
+  const [rows,setR]=useState([]);
+  const load=async()=>{const {data}=await sb.from('institutes').select('*').order('created_at',{ascending:false});setR(data||[])};
+  useEffect(()=>{load()},[]);
+  const exp=i=>new Date(Math.max(new Date(i.trial_ends),i.paid_until?new Date(i.paid_until):0));
+  const active=i=>!i.locked&&exp(i)>new Date();
+  const mrr=rows.filter(i=>i.paid_until&&new Date(i.paid_until)>new Date()&&!i.locked).length*999;
+  const act=async(fn,a)=>{const r=await sb.rpc(fn,a);if(r.error)alert(r.error.message);load()};
+  return <div className="max-w-5xl mx-auto p-4">
+    <div className="flex justify-between items-center mb-4"><h1 className="text-xl font-bold">👑 Super Admin</h1><button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500">Log out</button></div>
+    <div className="grid grid-cols-3 gap-3 mb-4">
+      {[['Institutes',rows.length],['Active',rows.filter(active).length],['MRR',inr(mrr)]].map(([a,b])=><div key={a} className="bg-white rounded-xl p-3 shadow-sm"><div className="text-xs text-slate-500">{a}</div><div className="text-xl font-bold">{b}</div></div>)}</div>
+    <div className="space-y-2">{rows.map(i=><div key={i.id} className="bg-white rounded-xl p-3 shadow-sm flex flex-wrap items-center gap-2 justify-between">
+      <div><div className="font-semibold">{i.name}</div><div className="text-xs text-slate-500">{i.email} · Expires {exp(i).toLocaleDateString('en-IN')}</div></div>
+      <div className="flex items-center gap-2"><span className={`text-xs px-2 py-1 rounded-full ${active(i)?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{active(i)?'Active':'Locked'}</span>
+        <button onClick={()=>act('admin_extend',{p_id:i.id})} className={btn()}>Extend +30 Days</button>
+        <button onClick={()=>act('admin_set_lock',{p_id:i.id,p_lock:!i.locked})} className={btn(i.locked?'green':'red')}>{i.locked?'Unlock':'Lock'}</button></div></div>)}
+      {!rows.length&&<p className="text-slate-500 text-sm">No institutes registered yet.</p>}</div></div>;
+}
+
+function StudentModal({st,inst,done,close}){
+  const [f,setF]=useState(st||{name:'',course:'Class 10',batch:'Morning 7 AM',parent_name:'',parent_phone:'',fee:'',paid:0,due_date:''});
+  const set=k=>e=>setF({...f,[k]:e.target.value});
+  const due=Math.max(0,(+f.fee||0)-(+f.paid||0));
+  const save=async()=>{
+    if(!f.name||!f.parent_phone)return alert('Student name and parent phone are required');
+    const row={name:f.name,course:f.course,batch:f.batch,parent_name:f.parent_name,parent_phone:f.parent_phone,fee:+f.fee||0,paid:+f.paid||0,due_date:f.due_date||null};
+    let sid=st&&st.id,delta=row.paid-(st?st.paid:0),r;
+    if(st)r=await sb.from('students').update(row).eq('id',sid);
+    else{r=await sb.from('students').insert({...row,institute_id:inst.id}).select().single();sid=r.data&&r.data.id}
+    if(r.error)return alert(r.error.message);
+    if(delta>0)await sb.from('payments').insert({institute_id:inst.id,student_id:sid,amount:delta});
+    done();
+  };
+  return <Modal title={st?'Edit Student':'Add Student'} close={close}>
+    <F l="Student Name"><input className={inp} value={f.name} onChange={set('name')}/></F>
+    <div className="grid grid-cols-2 gap-3">
+      <F l="Class / Course"><input list="cl" className={inp} value={f.course} onChange={set('course')}/></F>
+      <F l="Batch Timing"><input list="bl" className={inp} value={f.batch} onChange={set('batch')}/></F></div>
+    <datalist id="cl">{COURSES.map(c=><option key={c}>{c}</option>)}</datalist><datalist id="bl">{BATCHES.map(c=><option key={c}>{c}</option>)}</datalist>
+    <div className="grid grid-cols-2 gap-3">
+      <F l="Parent Name"><input className={inp} value={f.parent_name} onChange={set('parent_name')}/></F>
+      <F l="Parent Phone"><input className={inp} inputMode="tel" value={f.parent_phone} onChange={set('parent_phone')}/></F>
+      <F l="Monthly / Course Fee (₹)"><input className={inp} type="number" value={f.fee} onChange={set('fee')}/></F>
+      <F l="Paid Amount (₹)"><input className={inp} type="number" value={f.paid} onChange={set('paid')}/></F></div>
+    <div className="flex justify-between items-center bg-amber-50 rounded-lg px-3 py-2 mb-3 text-sm"><span>Pending Due</span><b className="text-amber-700">{inr(due)}</b></div>
+    <F l="Next Fee Due Date"><input className={inp} type="date" value={f.due_date||''} onChange={set('due_date')}/></F>
+    <button onClick={save} className={btn()+' w-full'}>Save Student</button></Modal>;
+}
+
+function Receipt({st,inst,close}){
+  const due=Math.max(0,st.fee-st.paid);
+  const msg=`Fee Receipt - ${inst.name}\nStudent: ${st.name} (${st.course})\nPaid: Rs.${st.paid}\nBalance Due: Rs.${due}\nDate: ${new Date().toLocaleDateString('en-IN')}`;
+  return <Modal title="Fee Receipt" close={close}>
+    <div id="receipt" className="border-2 border-dashed rounded-xl p-4 text-sm">
+      <div className="text-center font-bold text-lg">{inst.name}</div><div className="text-center text-xs text-slate-500 mb-3">Fee Receipt</div>
+      {[['Student',st.name],['Class',st.course],['Paid Amount',inr(st.paid)],['Balance Due',inr(due)],['Date',new Date().toLocaleDateString('en-IN')]].map(([a,b])=><div key={a} className="flex justify-between py-1 border-b"><span className="text-slate-500">{a}</span><b>{b}</b></div>)}</div>
+    <div className="flex gap-2 mt-3"><button onClick={()=>window.print()} className={btn()+' flex-1'}>Print</button><a href={wa(st.parent_phone,msg)} target="_blank" rel="noreferrer" className={btn('green')+' flex-1 text-center'}>Share on WhatsApp</a></div></Modal>;
+}
+
+function Students({d,inst,reload,openAdd}){
+  const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null);
+  const list=d.students.filter(s=>s.name.toLowerCase().includes(q.toLowerCase()));
+  const del=async s=>{if(confirm('Delete '+s.name+'?')){await sb.from('students').delete().eq('id',s.id);reload()}};
+  return <div><div className="flex gap-2 mb-3"><input className={inp+' !mt-0'} placeholder="Search students" value={q} onChange={e=>setQ(e.target.value)}/><button onClick={openAdd} className={btn()+' whitespace-nowrap'}>+ Add Student</button></div>
+    <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex flex-wrap justify-between gap-2">
+      <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{s.course} · {s.batch} · {s.parent_name} {s.parent_phone}</div>
+        <div className="text-xs mt-1">Fee {inr(s.fee)} · Paid {inr(s.paid)} · <b className="text-amber-700">Due {inr(s.fee-s.paid)}</b></div></div>
+      <div className="flex gap-1 items-start text-xs"><button onClick={()=>setRc(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Receipt</button><button onClick={()=>setEd(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button><button onClick={()=>del(s)} className="px-2 py-1.5 rounded-lg bg-red-50 text-red-600">Delete</button></div></div>)}
+      {!list.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div>
+    {ed&&<StudentModal st={ed} inst={inst} close={()=>setEd(null)} done={()=>{setEd(null);reload()}}/>}
+    {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}</div>;
+}
+
+function Fees({d,inst}){
+  const [b,setB]=useState('All'),[s,setS]=useState('Pending'),[rc,setRc]=useState(null);
+  const batches=[...new Set(d.students.map(x=>x.batch).filter(Boolean))];
+  const list=d.students.filter(x=>(b==='All'||x.batch===b)&&(s==='All'||(x.fee-x.paid>0&&(s==='Pending'||(x.due_date&&x.due_date<today())))));
+  return <div><div className="flex gap-2 mb-3">
+    <select className={inp+' !mt-0'} value={b} onChange={e=>setB(e.target.value)}><option>All</option>{batches.map(x=><option key={x}>{x}</option>)}</select>
+    <select className={inp+' !mt-0'} value={s} onChange={e=>setS(e.target.value)}><option>Pending</option><option>Overdue</option><option>All</option></select></div>
+    <div className="space-y-2">{list.map(x=>{const due=x.fee-x.paid;return <div key={x.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
+      <div><div className="font-semibold">{x.name}</div><div className="text-xs text-slate-500">{x.batch} · Due date {x.due_date||'—'}</div><div className="text-sm font-bold text-amber-700">{inr(due)}</div></div>
+      <div className="flex gap-1"><button onClick={()=>setRc(x)} className="px-2 py-1.5 rounded-lg bg-slate-100 text-xs">Receipt</button>
+        <WAB href={wa(x.parent_phone,`Dear Parent, fee of Rs.${due} for ${x.name} is due at ${inst.name}. Please pay at your earliest convenience.`)}>Remind</WAB></div></div>})}
+      {!list.length&&<p className="text-sm text-slate-500">Nothing to show.</p>}</div>
+    {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}</div>;
+}
+
+function Attendance({d,inst,reload}){
+  const batches=[...new Set([...BATCHES,...d.students.map(x=>x.batch).filter(Boolean)])];
+  const [b,setB]=useState(batches[0]);
+  const map={};d.att.forEach(a=>map[a.student_id]=a.status);
+  const mark=async(s,status)=>{const r=await sb.from('attendance').upsert({institute_id:inst.id,student_id:s.id,att_date:today(),status},{onConflict:'student_id,att_date'});if(r.error)alert(r.error.message);reload()};
+  const list=d.students.filter(x=>x.batch===b);
+  return <div><select className={inp+' !mt-0 mb-3'} value={b} onChange={e=>setB(e.target.value)}>{batches.map(x=><option key={x}>{x}</option>)}</select>
+    <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
+      <div className="font-semibold">{s.name}</div>
+      <div className="flex gap-1 items-center">
+        <button onClick={()=>mark(s,'present')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${map[s.id]==='present'?'bg-green-600 text-white':'bg-green-50 text-green-700'}`}>Present</button>
+        <button onClick={()=>mark(s,'absent')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${map[s.id]==='absent'?'bg-red-600 text-white':'bg-red-50 text-red-700'}`}>Absent</button>
+        {map[s.id]==='absent'&&<WAB href={wa(s.parent_phone,`Alert from ${inst.name}: Your ward ${s.name} is ABSENT from class today.`)}>Alert Parent</WAB>}</div></div>)}
+      {!list.length&&<p className="text-sm text-slate-500">No students in this batch.</p>}</div></div>;
+}
+
+function Tests({d,inst,reload}){
+  const [f,setF]=useState({student_id:'',test_name:'',subject:'',max_marks:'',marks:''});
+  const set=k=>e=>setF({...f,[k]:e.target.value});
+  const save=async()=>{if(!f.student_id||!f.test_name)return alert('Select a student and enter test name');
+    const r=await sb.from('tests').insert({...f,max_marks:+f.max_marks||0,marks:+f.marks||0,institute_id:inst.id});if(r.error)return alert(r.error.message);setF({...f,test_name:'',marks:''});reload()};
+  const sn=id=>d.students.find(s=>s.id===id)||{};
+  return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3"><div className="grid grid-cols-2 gap-x-3">
+    <F l="Student"><select className={inp} value={f.student_id} onChange={set('student_id')}><option value="">Select</option>{d.students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></F>
+    <F l="Test Name"><input className={inp} value={f.test_name} onChange={set('test_name')}/></F>
+    <F l="Subject"><input className={inp} value={f.subject} onChange={set('subject')}/></F>
+    <F l="Max Marks"><input className={inp} type="number" value={f.max_marks} onChange={set('max_marks')}/></F>
+    <F l="Marks Obtained"><input className={inp} type="number" value={f.marks} onChange={set('marks')}/></F></div>
+    <button onClick={save} className={btn()}>Save Score</button></div>
+    <div className="space-y-2">{d.tests.map(t=>{const s=sn(t.student_id);return <div key={t.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
+      <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{t.test_name} · {t.subject}</div><div className="text-sm font-bold">{t.marks}/{t.max_marks}</div></div>
+      <WAB href={wa(s.parent_phone,`Test result from ${inst.name}: ${s.name} scored ${t.marks}/${t.max_marks} in ${t.subject} (${t.test_name}).`)}>Send Result</WAB></div>})}</div></div>;
+}
+
+function Inquiries({d,inst,reload,focus}){
+  const [f,setF]=useState({name:'',course:'Class 10',phone:'',followup_date:''});
+  const set=k=>e=>setF({...f,[k]:e.target.value});
+  const save=async()=>{if(!f.name||!f.phone)return alert('Name and phone are required');
+    const r=await sb.from('inquiries').insert({...f,followup_date:f.followup_date||null,institute_id:inst.id});if(r.error)return alert(r.error.message);setF({name:'',course:'Class 10',phone:'',followup_date:''});reload()};
+  const del=async i=>{await sb.from('inquiries').delete().eq('id',i.id);reload()};
+  return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3"><div className="grid grid-cols-2 gap-x-3">
+    <F l="Student Name"><input className={inp} value={f.name} onChange={set('name')}/></F>
+    <F l="Class / Course"><input list="cl" className={inp} value={f.course} onChange={set('course')}/></F>
+    <F l="Phone"><input className={inp} inputMode="tel" value={f.phone} onChange={set('phone')}/></F>
+    <F l="Follow-up Date"><input className={inp} type="date" value={f.followup_date} onChange={set('followup_date')}/></F></div>
+    <button onClick={save} className={btn()}>+ Add Inquiry</button></div>
+    <div className="space-y-2">{d.inq.map(i=><div key={i.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
+      <div><div className="font-semibold">{i.name}</div><div className="text-xs text-slate-500">{i.course} · {i.phone} · Follow-up {i.followup_date||'—'}</div></div>
+      <div className="flex gap-1"><WAB href={wa(i.phone,`Hello! This is ${inst.name}. Thank you for your interest in ${i.course}. Would you like to visit us for admission details?`)}>Follow Up</WAB><button onClick={()=>del(i)} className="px-2 text-xs text-red-600">✕</button></div></div>)}</div></div>;
+}
+
+function Dashboard({inst}){
+  const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],tests:[],inq:[]}),[add,setAdd]=useState(false);
+  const reload=async()=>{
+    const [s,a,t,i]=await Promise.all([sb.from('students').select('*').order('name'),sb.from('attendance').select('*').eq('att_date',today()),sb.from('tests').select('*').order('test_date',{ascending:false}).limit(50),sb.from('inquiries').select('*').order('created_at',{ascending:false})]);
+    setD({students:s.data||[],att:a.data||[],tests:t.data||[],inq:i.data||[]});
+  };
+  useEffect(()=>{reload()},[]);
+  const pend=d.students.reduce((x,s)=>x+Math.max(0,s.fee-s.paid),0);
+  const pres=d.att.filter(a=>a.status==='present').length;
+  const pct=d.att.length?Math.round(pres*100/d.att.length):0;
+  const tabs=[['home','Home'],['students','Students'],['fees','Fees'],['attendance','Attendance'],['tests','Tests'],['inquiries','Inquiries']];
+  const P={d,inst,reload};
+  return <div className="max-w-3xl mx-auto p-3 pb-10">
+    <div className="flex justify-between items-center mb-3"><div><h1 className="font-bold text-lg">🎓 {inst.name}</h1><div className="text-xs text-slate-500">Powered by CoachPro</div></div><button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500">Log out</button></div>
+    <div className="flex gap-1 overflow-x-auto mb-4">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${tab===k?'bg-indigo-600 text-white':'bg-white'}`}>{l}</button>)}</div>
+    {tab==='home'&&<div>
+      <div className="grid grid-cols-2 gap-3 mb-4">{[['Active Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700'],['Pending Fees',inr(pend),'text-amber-700'],['New Inquiries',d.inq.length,'text-violet-700']].map(([a,b,c])=><div key={a} className="bg-white rounded-xl p-4 shadow-sm"><div className="text-xs text-slate-500">{a}</div><div className={`text-2xl font-bold ${c}`}>{b}</div></div>)}</div>
+      <div className="flex flex-wrap gap-2"><button onClick={()=>setAdd(true)} className={btn()}>+ Add Student</button><button onClick={()=>setTab('attendance')} className={btn('green')}>Mark Batch Attendance</button><button onClick={()=>setTab('inquiries')} className={btn('violet')}>+ Add Inquiry</button></div></div>}
+    {tab==='students'&&<Students {...P} openAdd={()=>setAdd(true)}/>}
+    {tab==='fees'&&<Fees {...P}/>}
+    {tab==='attendance'&&<Attendance {...P}/>}
+    {tab==='tests'&&<Tests {...P}/>}
+    {tab==='inquiries'&&<Inquiries {...P}/>}
+    {add&&<StudentModal inst={inst} close={()=>setAdd(false)} done={()=>{setAdd(false);reload()}}/>}</div>;
+}
+
+function App(){
+  const [s,setS]=useState(undefined),[inst,setInst]=useState(undefined);
+  useEffect(()=>{sb.auth.getSession().then(({data})=>setS(data.session));const {data}=sb.auth.onAuthStateChange((_,x)=>setS(x));return()=>data.subscription.unsubscribe()},[]);
+  const load=async()=>{const {data}=await sb.from('institutes').select('*').eq('owner_id',s.user.id).maybeSingle();setInst(data)};
+  useEffect(()=>{if(s&&s.user.email!==ADMIN_EMAIL){setInst(undefined);load()}},[s]);
+  if(s===undefined)return <div className="p-10 text-center text-slate-500">Loading…</div>;
+  if(!s)return <Auth/>;
+  if(s.user.email===ADMIN_EMAIL)return <SuperAdmin/>;
+  if(inst===undefined)return <div className="p-10 text-center text-slate-500">Loading…</div>;
+  if(!inst)return <Setup reload={load}/>;
+  const exp=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0));
+  if(inst.locked||exp<new Date())return <Locked inst={inst}/>;
+  return <Dashboard inst={inst}/>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
