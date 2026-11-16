@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>@media print{body *{visibility:hidden}#receipt,#receipt *{visibility:visible}#receipt{position:absolute;left:0;top:0;width:100%}}</style>
 </head>
@@ -98,9 +99,12 @@ function SuperAdmin(){
 function StudentModal({st,inst,done,close}){
   const [f,setF]=useState(st||{name:'',course:'Class 10',batch:'Morning 7 AM',parent_name:'',parent_phone:'',fee:'',paid:0,due_date:''});
   const set=k=>e=>setF({...f,[k]:e.target.value});
-  const due=Math.max(0,(+f.fee||0)-(+f.paid||0));
+  const due=Math.max(0,(+f.fee||0)-(+f.paid||0)),[err,setErr]=useState('');
   const save=async()=>{
-    if(!f.name||!f.parent_phone)return alert('Student name and parent phone are required');
+    if(!f.name.trim()||!f.parent_phone.trim())return setErr('Student name and parent phone are required.');
+    const keys=await existingKeys(inst,st&&st.id);
+    if(keys.has(dkey(f.name,f.parent_phone)))return setErr('Duplicate entry blocked: a student named "'+f.name.trim()+'" with this parent phone already exists.');
+    setErr('');
     const row={name:f.name,course:f.course,batch:f.batch,parent_name:f.parent_name,parent_phone:f.parent_phone,fee:+f.fee||0,paid:+f.paid||0,due_date:f.due_date||null};
     let sid=st&&st.id,delta=row.paid-(st?st.paid:0),r;
     if(st)r=await sb.from('students').update(row).eq('id',sid);
@@ -122,6 +126,7 @@ function StudentModal({st,inst,done,close}){
       <F l="Paid Amount (₹)"><input className={inp} type="number" value={f.paid} onChange={set('paid')}/></F></div>
     <div className="flex justify-between items-center bg-amber-50 rounded-lg px-3 py-2 mb-3 text-sm"><span>Pending Due</span><b className="text-amber-700">{inr(due)}</b></div>
     <F l="Next Fee Due Date"><input className={inp} type="date" value={f.due_date||''} onChange={set('due_date')}/></F>
+    {err&&<div className="bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 py-2 text-sm mb-3">⚠ {err}</div>}
     <button onClick={save} className={btn()+' w-full'}>Save Student</button></Modal>;
 }
 
@@ -135,75 +140,179 @@ function Receipt({st,inst,close}){
     <div className="flex gap-2 mt-3"><button onClick={()=>window.print()} className={btn()+' flex-1'}>Print</button><a href={wa(st.parent_phone,msg)} target="_blank" rel="noreferrer" className={btn('green')+' flex-1 text-center'}>Share on WhatsApp</a></div></Modal>;
 }
 
+const dkey=(n,p)=>(n||'').trim().toLowerCase().replace(/\s+/g,' ')+'|'+(p||'').replace(/\D/g,'').slice(-10);
+const existingKeys=async(inst,exceptId)=>{const {data}=await sb.from('students').select('id,name,parent_phone').eq('institute_id',inst.id);return new Set((data||[]).filter(x=>x.id!==exceptId).map(x=>dkey(x.name,x.parent_phone)))};
+const ord=n=>{const s=['th','st','nd','rd'],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0])};
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dl=(name,text)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/csv'}));a.download=name;a.click()};
+const isoDate=s=>{const m=(s||'').match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:(s||null)};
+function parseCSV(t){const rows=[];let r=[],c='',q=false;for(let i=0;i<t.length;i++){const ch=t[i];if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}else if(ch=='"')q=true;else if(ch==','){r.push(c);c=''}else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;r.push(c);c='';if(r.some(x=>x.trim()))rows.push(r);r=[]}else c+=ch}r.push(c);if(r.some(x=>x.trim()))rows.push(r);return rows}
+
+function Queue({items,label,close}){
+  const [i,setI]=useState(0),n=items.length,cur=items[i];
+  const send=()=>{window.open(wa(cur.phone,cur.text),'_blank');setI(i+1)};
+  return <Modal title="Bulk WhatsApp Queue" close={close}>
+    {cur?<div className="text-center">
+      <div className="h-2 bg-slate-100 rounded mb-3"><div className="h-2 bg-green-600 rounded" style={{width:(i/n*100)+'%'}}></div></div>
+      <div className="text-lg font-bold">{cur.name}</div><div className="text-sm text-slate-500 mb-2">{cur.phone}</div>
+      <div className="text-xs bg-slate-50 rounded-lg p-2 mb-4 text-left whitespace-pre-line">{cur.text}</div>
+      <button onClick={send} className="w-full py-4 rounded-xl text-white text-lg font-bold bg-green-600 hover:bg-green-700">{label} & Next ({i+1}/{n}) →</button>
+      <button onClick={()=>setI(i+1)} className="mt-3 text-sm text-slate-500">Skip this one</button>
+    </div>:<div className="text-center py-6"><div className="text-4xl">✅</div><p className="font-semibold mt-2">All {n} messages are done</p><button onClick={close} className={btn()+' mt-3'}>Close</button></div>}
+  </Modal>;
+}
+
 function Students({d,inst,reload,openAdd}){
-  const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null);
+  const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false);
   const list=d.students.filter(s=>s.name.toLowerCase().includes(q.toLowerCase()));
-  const del=async s=>{if(confirm('Delete '+s.name+'?')){await sb.from('students').delete().eq('id',s.id);reload()}};
-  return <div><div className="flex gap-2 mb-3"><input className={inp+' !mt-0'} placeholder="Search students" value={q} onChange={e=>setQ(e.target.value)}/><button onClick={openAdd} className={btn()+' whitespace-nowrap'}>+ Add Student</button></div>
+  const del=async s=>{if(!confirm(`Are you sure you want to delete ${s.name}? All records will be permanently removed.`))return;const r=await sb.from('students').delete().eq('id',s.id);if(r.error)alert(r.error.message);reload()};
+  const sample=()=>dl('coachpro_students_sample.csv','Student Name,Class,Batch,Parent Name,Parent Phone,Total Fee,Paid,Due Date\nRahul Sharma,Class 10,Morning 7 AM,Suresh Sharma,9876543210,1500,500,2026-12-05\nPriya Verma,Class 12,Evening 4 PM,Anil Verma,9123456780,2000,2000,2026-12-10\n');
+  const imp=async e=>{
+    const file=e.target.files[0];e.target.value='';if(!file)return;setBusy(true);setMsg('');
+    try{
+      const rows=parseCSV((await file.text()).replace(/^\uFEFF/,''));
+      const h=(rows.shift()||[]).map(x=>x.trim().toLowerCase()),ix=n=>h.indexOf(n);
+      if(ix('student name')<0||ix('parent phone')<0){setMsg('error:The file must have "Student Name" and "Parent Phone" columns. Download the sample CSV to see the format.');setBusy(false);return}
+      const g=(r,n)=>ix(n)<0?'':(r[ix(n)]||'').trim();
+      const keys=await existingKeys(inst),add=[];let dup=0,bad=0;
+      rows.forEach(r=>{const name=g(r,'student name'),pp=g(r,'parent phone');if(!name||!pp){bad++;return}const k=dkey(name,pp);if(keys.has(k)){dup++;return}keys.add(k);add.push({institute_id:inst.id,name,course:g(r,'class')||null,batch:g(r,'batch')||null,parent_name:g(r,'parent name')||null,parent_phone:pp,fee:+g(r,'total fee')||0,paid:+g(r,'paid')||0,due_date:isoDate(g(r,'due date'))})});
+      let ok=0;
+      for(let i=0;i<add.length;i+=500){
+        const r=await sb.from('students').insert(add.slice(i,i+500)).select('id,paid');
+        if(r.error){setMsg('error:'+r.error.message);setBusy(false);reload();return}
+        ok+=r.data.length;
+        const pay=r.data.filter(x=>x.paid>0).map(x=>({institute_id:inst.id,student_id:x.id,amount:x.paid}));
+        if(pay.length)await sb.from('payments').insert(pay);
+      }
+      setMsg(`ok:Imported ${ok} students, skipped ${dup} duplicates`+(bad?` (${bad} rows ignored: missing name or phone)`:'')+'.');
+    }catch(x){setMsg('error:'+x.message)}
+    setBusy(false);reload();
+  };
+  return <div>
+    <div className="flex flex-wrap gap-2 mb-3"><input className={inp+' !mt-0 flex-1 min-w-[140px]'} placeholder="Search students" value={q} onChange={e=>setQ(e.target.value)}/>
+      <button onClick={openAdd} className={btn()+' whitespace-nowrap'}>+ Add Student</button>
+      <label className={btn('violet')+' whitespace-nowrap cursor-pointer'}>{busy?'Importing…':'Import CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={imp} disabled={busy}/></label>
+      <button onClick={sample} className="px-3 py-2 rounded-lg text-sm bg-white border">Download Sample CSV</button></div>
+    {msg&&<div className={`rounded-lg px-3 py-2 text-sm mb-3 ${msg.startsWith('ok:')?'bg-green-50 text-green-700':'bg-red-50 text-red-700'}`}>{msg.replace(/^(ok|error):/,'')}</div>}
     <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex flex-wrap justify-between gap-2">
       <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{s.course} · {s.batch} · {s.parent_name} {s.parent_phone}</div>
         <div className="text-xs mt-1">Fee {inr(s.fee)} · Paid {inr(s.paid)} · <b className="text-amber-700">Due {inr(s.fee-s.paid)}</b></div></div>
-      <div className="flex gap-1 items-start text-xs"><button onClick={()=>setRc(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Receipt</button><button onClick={()=>setEd(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button><button onClick={()=>del(s)} className="px-2 py-1.5 rounded-lg bg-red-50 text-red-600">Delete</button></div></div>)}
+      <div className="flex gap-1 items-start text-xs"><button onClick={()=>setRc(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Receipt</button><button onClick={()=>setEd(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button><button onClick={()=>del(s)} title="Delete" className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white">🗑</button></div></div>)}
       {!list.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div>
     {ed&&<StudentModal st={ed} inst={inst} close={()=>setEd(null)} done={()=>{setEd(null);reload()}}/>}
     {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}</div>;
 }
 
 function Fees({d,inst}){
-  const [b,setB]=useState('All'),[s,setS]=useState('Pending'),[rc,setRc]=useState(null);
+  const [b,setB]=useState('All'),[s,setS]=useState('Pending'),[rc,setRc]=useState(null),[qu,setQu]=useState(false);
   const batches=[...new Set(d.students.map(x=>x.batch).filter(Boolean))];
   const list=d.students.filter(x=>(b==='All'||x.batch===b)&&(s==='All'||(x.fee-x.paid>0&&(s==='Pending'||(x.due_date&&x.due_date<today())))));
+  const dueList=list.filter(x=>x.fee-x.paid>0);
+  const text=x=>`Dear Parent, fee of Rs.${x.fee-x.paid} for ${x.name} is due at ${inst.name}. Please pay at your earliest convenience.`;
   return <div><div className="flex gap-2 mb-3">
     <select className={inp+' !mt-0'} value={b} onChange={e=>setB(e.target.value)}><option>All</option>{batches.map(x=><option key={x}>{x}</option>)}</select>
     <select className={inp+' !mt-0'} value={s} onChange={e=>setS(e.target.value)}><option>Pending</option><option>Overdue</option><option>All</option></select></div>
+    {dueList.length>0&&<button onClick={()=>setQu(true)} className={btn('green')+' w-full mb-3'}>Send Bulk Fee Reminders ({dueList.length})</button>}
     <div className="space-y-2">{list.map(x=>{const due=x.fee-x.paid;return <div key={x.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
       <div><div className="font-semibold">{x.name}</div><div className="text-xs text-slate-500">{x.batch} · Due date {x.due_date||'—'}</div><div className="text-sm font-bold text-amber-700">{inr(due)}</div></div>
       <div className="flex gap-1"><button onClick={()=>setRc(x)} className="px-2 py-1.5 rounded-lg bg-slate-100 text-xs">Receipt</button>
-        <WAB href={wa(x.parent_phone,`Dear Parent, fee of Rs.${due} for ${x.name} is due at ${inst.name}. Please pay at your earliest convenience.`)}>Remind</WAB></div></div>})}
+        <WAB href={wa(x.parent_phone,text(x))}>Remind</WAB></div></div>})}
       {!list.length&&<p className="text-sm text-slate-500">Nothing to show.</p>}</div>
-    {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}</div>;
+    {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}
+    {qu&&<Queue items={dueList.map(x=>({name:x.name,phone:x.parent_phone,text:text(x)}))} label="Send" close={()=>setQu(false)}/>}</div>;
 }
 
 function Attendance({d,inst,reload}){
   const batches=[...new Set([...BATCHES,...d.students.map(x=>x.batch).filter(Boolean)])];
-  const [b,setB]=useState(batches[0]);
+  const [b,setB]=useState(batches[0]),[loc,setLoc]=useState({}),[ab,setAb]=useState(null),[qu,setQu]=useState(false),[sv,setSv]=useState(false);
   const map={};d.att.forEach(a=>map[a.student_id]=a.status);
-  const mark=async(s,status)=>{const r=await sb.from('attendance').upsert({institute_id:inst.id,student_id:s.id,att_date:today(),status},{onConflict:'student_id,att_date'});if(r.error)alert(r.error.message);reload()};
   const list=d.students.filter(x=>x.batch===b);
-  return <div><select className={inp+' !mt-0 mb-3'} value={b} onChange={e=>setB(e.target.value)}>{batches.map(x=><option key={x}>{x}</option>)}</select>
+  const st=s=>loc[s.id]||map[s.id];
+  const msg=s=>`Alert from ${inst.name}: Your ward ${s.name} is ABSENT from class today.`;
+  const dirty=Object.keys(loc).length>0;
+  const save=async()=>{
+    const rows=list.filter(s=>st(s)).map(s=>({institute_id:inst.id,student_id:s.id,att_date:today(),status:st(s)}));
+    if(!rows.length)return alert('Mark attendance for at least one student first.');
+    setSv(true);const r=await sb.from('attendance').upsert(rows,{onConflict:'student_id,att_date'});setSv(false);
+    if(r.error)return alert(r.error.message);
+    const abs=rows.filter(x=>x.status==='absent').map(x=>list.find(s=>s.id===x.student_id));
+    setLoc({});await reload();
+    if(abs.length)setAb(abs);else alert('Attendance saved. No students are absent today.');
+  };
+  return <div><div className="flex gap-2 mb-3"><select className={inp+' !mt-0'} value={b} onChange={e=>{setB(e.target.value);setLoc({})}}>{batches.map(x=><option key={x}>{x}</option>)}</select>
+    <button onClick={()=>{const m={};list.forEach(s=>m[s.id]='present');setLoc(m)}} className="px-3 py-2 rounded-lg text-sm bg-white border whitespace-nowrap">All Present</button></div>
     <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
       <div className="font-semibold">{s.name}</div>
       <div className="flex gap-1 items-center">
-        <button onClick={()=>mark(s,'present')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${map[s.id]==='present'?'bg-green-600 text-white':'bg-green-50 text-green-700'}`}>Present</button>
-        <button onClick={()=>mark(s,'absent')} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${map[s.id]==='absent'?'bg-red-600 text-white':'bg-red-50 text-red-700'}`}>Absent</button>
-        {map[s.id]==='absent'&&<WAB href={wa(s.parent_phone,`Alert from ${inst.name}: Your ward ${s.name} is ABSENT from class today.`)}>Alert Parent</WAB>}</div></div>)}
-      {!list.length&&<p className="text-sm text-slate-500">No students in this batch.</p>}</div></div>;
+        <button onClick={()=>setLoc({...loc,[s.id]:'present'})} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${st(s)==='present'?'bg-green-600 text-white':'bg-green-50 text-green-700'}`}>Present</button>
+        <button onClick={()=>setLoc({...loc,[s.id]:'absent'})} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${st(s)==='absent'?'bg-red-600 text-white':'bg-red-50 text-red-700'}`}>Absent</button>
+        {st(s)==='absent'&&<WAB href={wa(s.parent_phone,msg(s))}>Alert Parent</WAB>}</div></div>)}
+      {!list.length&&<p className="text-sm text-slate-500">No students in this batch.</p>}</div>
+    {list.length>0&&<button onClick={save} disabled={sv} className={btn('green')+' w-full mt-3 py-3'}>{sv?'Saving…':'Save Attendance'}{dirty?' (unsaved changes)':''}</button>}
+    {ab&&!qu&&<Modal title="Attendance Saved" close={()=>setAb(null)}><div className="text-center"><div className="text-4xl">📢</div>
+      <p className="font-bold text-lg my-3">{ab.length} Students Absent Today — Send WhatsApp Alerts to Parents</p>
+      <button onClick={()=>setQu(true)} className="w-full py-3 rounded-xl text-white font-bold bg-green-600 hover:bg-green-700">Start Bulk Absent Alerts</button>
+      <button onClick={()=>setAb(null)} className="mt-3 text-sm text-slate-500">Not now</button></div></Modal>}
+    {ab&&qu&&<Queue items={ab.map(s=>({name:s.name,phone:s.parent_phone,text:msg(s)}))} label="Send Absent Alert" close={()=>{setQu(false);setAb(null)}}/>}</div>;
 }
 
 function Tests({d,inst,reload}){
-  const [f,setF]=useState({student_id:'',test_name:'',subject:'',max_marks:'',marks:''});
-  const set=k=>e=>setF({...f,[k]:e.target.value});
-  const save=async()=>{if(!f.student_id||!f.test_name)return alert('Select a student and enter test name');
-    const r=await sb.from('tests').insert({...f,max_marks:+f.max_marks||0,marks:+f.marks||0,institute_id:inst.id});if(r.error)return alert(r.error.message);setF({...f,test_name:'',marks:''});reload()};
-  const sn=id=>d.students.find(s=>s.id===id)||{};
+  const batches=[...new Set(d.students.map(x=>x.batch).filter(Boolean))];
+  const [b,setB]=useState(''),[tn,setTn]=useState(''),[sub,setSub]=useState(''),[mx,setMx]=useState(100),[pp,setPp]=useState(33),[dt,setDt]=useState(today()),[mk,setMk]=useState({}),[qu,setQu]=useState(false),[sv,setSv]=useState(false);
+  const bb=b||batches[0]||'',M=+mx||0;
+  const stu=d.students.filter(s=>s.batch===bb);
+  const ex={};d.tests.filter(t=>t.test_name===tn.trim()&&(t.subject||'')===sub.trim()).forEach(t=>ex[t.student_id]=t);
+  const val=id=>mk[id]!==undefined?mk[id]:(ex[id]?String(ex[id].marks):'');
+  const rows=stu.map(s=>{const v=val(s.id),has=v!==''&&!isNaN(+v),m=has?+v:null,pct=has&&M?m/M*100:null;return{...s,m,pct,pass:pct!==null&&pct>=(+pp||0)}});
+  const ranked=rows.filter(r=>r.m!==null).sort((a,c)=>c.m-a.m);
+  ranked.forEach((r,i)=>{r.rank=i>0&&r.m===ranked[i-1].m?ranked[i-1].rank:i+1});
+  const save=async()=>{
+    if(!tn.trim()||!M)return alert('Please enter a test name and max marks.');
+    if(!ranked.length)return alert('Enter marks for at least one student.');
+    if(ranked.some(r=>r.m>M||r.m<0))return alert('Marks cannot be negative or more than max marks.');
+    setSv(true);const ins=[],ups=[];
+    ranked.forEach(r=>{const e=ex[r.id],row={test_name:tn.trim(),subject:sub.trim(),max_marks:M,marks:r.m,test_date:dt};e?ups.push(sb.from('tests').update(row).eq('id',e.id)):ins.push({...row,student_id:r.id,institute_id:inst.id})});
+    const res=await Promise.all([...ups,...(ins.length?[sb.from('tests').insert(ins)]:[])]);
+    setSv(false);const er=res.find(x=>x.error);if(er)return alert(er.error.message);
+    setMk({});await reload();alert('Marks saved for '+ranked.length+' students.');
+  };
+  const pdf=()=>{
+    if(!ranked.length)return alert('Enter marks first.');
+    const el=document.createElement('div'),td='border:1px solid #333;padding:6px 8px;font-size:13px';
+    el.style.cssText='position:fixed;left:0;top:0;z-index:-1;width:780px;background:#fff;padding:20px;font-family:Arial,sans-serif;color:#000';
+    el.innerHTML=`<div style="text-align:center;font-size:22px;font-weight:bold">${esc(inst.name)}</div><div style="text-align:center;font-size:16px;margin:4px 0">${esc(tn)}${sub?' - '+esc(sub):''}</div><div style="text-align:center;font-size:12px;margin-bottom:10px">Batch: ${esc(bb)} | Date: ${esc(dt)} | Max Marks: ${M}</div><table style="border-collapse:collapse;width:100%"><tr style="background:#e5e7eb;font-weight:bold">${['Rank','Student Name','Marks Obtained','Max Marks','Percentage','Status'].map(h=>`<td style="${td}">${h}</td>`).join('')}</tr>${ranked.map(r=>`<tr><td style="${td}">${r.rank}</td><td style="${td}">${esc(r.name)}</td><td style="${td}">${r.m}</td><td style="${td}">${M}</td><td style="${td}">${r.pct.toFixed(1)}%</td><td style="${td};font-weight:bold;color:${r.pass?'#15803d':'#b91c1c'}">${r.pass?'Pass':'Fail'}</td></tr>`).join('')}</table>`;
+    document.body.appendChild(el);
+    html2pdf().set({margin:8,filename:(tn.trim().replace(/\s+/g,'_')||'result')+'.pdf',html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}}).from(el).save().then(()=>el.remove(),()=>el.remove());
+  };
+  const items=ranked.map(r=>({name:r.name,phone:r.parent_phone,text:`Report Card - ${inst.name}\nStudent: ${r.name}\nTest: ${tn}${sub?' ('+sub+')':''}\nMarks: ${r.m}/${M}\nPercentage: ${r.pct.toFixed(1)}%\nResult: ${r.pass?'Pass':'Fail'}\nClass Rank: ${ord(r.rank)} of ${ranked.length}`}));
+  const c="border border-slate-300 px-2 py-1.5";
   return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3"><div className="grid grid-cols-2 gap-x-3">
-    <F l="Student"><select className={inp} value={f.student_id} onChange={set('student_id')}><option value="">Select</option>{d.students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></F>
-    <F l="Test Name"><input className={inp} value={f.test_name} onChange={set('test_name')}/></F>
-    <F l="Subject"><input className={inp} value={f.subject} onChange={set('subject')}/></F>
-    <F l="Max Marks"><input className={inp} type="number" value={f.max_marks} onChange={set('max_marks')}/></F>
-    <F l="Marks Obtained"><input className={inp} type="number" value={f.marks} onChange={set('marks')}/></F></div>
-    <button onClick={save} className={btn()}>Save Score</button></div>
-    <div className="space-y-2">{d.tests.map(t=>{const s=sn(t.student_id);return <div key={t.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
-      <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{t.test_name} · {t.subject}</div><div className="text-sm font-bold">{t.marks}/{t.max_marks}</div></div>
-      <WAB href={wa(s.parent_phone,`Test result from ${inst.name}: ${s.name} scored ${t.marks}/${t.max_marks} in ${t.subject} (${t.test_name}).`)}>Send Result</WAB></div>})}</div></div>;
+    <F l="Batch"><select className={inp} value={bb} onChange={e=>{setB(e.target.value);setMk({})}}>{batches.map(x=><option key={x}>{x}</option>)}</select></F>
+    <F l="Test Name"><input className={inp} value={tn} onChange={e=>setTn(e.target.value)} placeholder="Weekly Test 1"/></F>
+    <F l="Subject"><input className={inp} value={sub} onChange={e=>setSub(e.target.value)} placeholder="Physics"/></F>
+    <F l="Max Marks"><input className={inp} type="number" value={mx} onChange={e=>setMx(e.target.value)}/></F>
+    <F l="Pass Percentage"><input className={inp} type="number" value={pp} onChange={e=>setPp(e.target.value)}/></F>
+    <F l="Test Date"><input className={inp} type="date" value={dt} onChange={e=>setDt(e.target.value)}/></F></div></div>
+    {!stu.length?<p className="text-sm text-slate-500">No students in this batch.</p>:<div>
+      <div className="overflow-x-auto bg-white rounded-xl shadow-sm mb-3"><table className="w-full text-sm border-collapse">
+        <thead className="bg-slate-100"><tr>{['Rank','Student Name','Marks','Max','%','Status'].map(h=><th key={h} className={c+' text-left'}>{h}</th>)}</tr></thead>
+        <tbody>{rows.map(r=><tr key={r.id}><td className={c+' font-bold'}>{r.m!==null?ord(r.rank):'—'}</td><td className={c}>{r.name}</td>
+          <td className={c}><input type="number" inputMode="decimal" className="w-20 border rounded px-2 py-1" value={val(r.id)} onChange={e=>setMk({...mk,[r.id]:e.target.value})}/></td>
+          <td className={c}>{M}</td><td className={c}>{r.pct!==null?r.pct.toFixed(1)+'%':'—'}</td>
+          <td className={c+' font-semibold '+(r.pct===null?'':r.pass?'text-green-700':'text-red-600')}>{r.pct===null?'—':r.pass?'Pass':'Fail'}</td></tr>)}</tbody></table></div>
+      <div className="grid gap-2">
+        <button onClick={save} disabled={sv} className={btn()+' py-3'}>{sv?'Saving…':'Save All Marks'}</button>
+        <button onClick={pdf} className={btn('slate')+' py-3'}>Download Excel-Style PDF Report</button>
+        <button onClick={()=>ranked.length?setQu(true):alert('Enter marks first.')} className={btn('green')+' py-3'}>Send Results to All Parents (Bulk Queue)</button></div></div>}
+    {qu&&<Queue items={items} label="Send Result" close={()=>setQu(false)}/>}</div>;
 }
 
-function Inquiries({d,inst,reload,focus}){
+function Inquiries({d,inst,reload}){
   const [f,setF]=useState({name:'',course:'Class 10',phone:'',followup_date:''});
   const set=k=>e=>setF({...f,[k]:e.target.value});
   const save=async()=>{if(!f.name||!f.phone)return alert('Name and phone are required');
     const r=await sb.from('inquiries').insert({...f,followup_date:f.followup_date||null,institute_id:inst.id});if(r.error)return alert(r.error.message);setF({name:'',course:'Class 10',phone:'',followup_date:''});reload()};
-  const del=async i=>{await sb.from('inquiries').delete().eq('id',i.id);reload()};
+  const del=async i=>{if(!confirm(`Are you sure you want to delete ${i.name}? All records will be permanently removed.`))return;const r=await sb.from('inquiries').delete().eq('id',i.id);if(r.error)alert(r.error.message);reload()};
   return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3"><div className="grid grid-cols-2 gap-x-3">
     <F l="Student Name"><input className={inp} value={f.name} onChange={set('name')}/></F>
     <F l="Class / Course"><input list="cl" className={inp} value={f.course} onChange={set('course')}/></F>
@@ -212,13 +321,13 @@ function Inquiries({d,inst,reload,focus}){
     <button onClick={save} className={btn()}>+ Add Inquiry</button></div>
     <div className="space-y-2">{d.inq.map(i=><div key={i.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
       <div><div className="font-semibold">{i.name}</div><div className="text-xs text-slate-500">{i.course} · {i.phone} · Follow-up {i.followup_date||'—'}</div></div>
-      <div className="flex gap-1"><WAB href={wa(i.phone,`Hello! This is ${inst.name}. Thank you for your interest in ${i.course}. Would you like to visit us for admission details?`)}>Follow Up</WAB><button onClick={()=>del(i)} className="px-2 text-xs text-red-600">✕</button></div></div>)}</div></div>;
+      <div className="flex gap-1 items-center"><WAB href={wa(i.phone,`Hello! This is ${inst.name}. Thank you for your interest in ${i.course}. Would you like to visit us for admission details?`)}>Follow Up</WAB><button onClick={()=>del(i)} title="Delete" className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs">🗑</button></div></div>)}</div></div>;
 }
 
 function Dashboard({inst}){
   const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],tests:[],inq:[]}),[add,setAdd]=useState(false);
   const reload=async()=>{
-    const [s,a,t,i]=await Promise.all([sb.from('students').select('*').order('name'),sb.from('attendance').select('*').eq('att_date',today()),sb.from('tests').select('*').order('test_date',{ascending:false}).limit(50),sb.from('inquiries').select('*').order('created_at',{ascending:false})]);
+    const [s,a,t,i]=await Promise.all([sb.from('students').select('*').order('name'),sb.from('attendance').select('*').eq('att_date',today()),sb.from('tests').select('*').order('test_date',{ascending:false}).limit(500),sb.from('inquiries').select('*').order('created_at',{ascending:false})]);
     setD({students:s.data||[],att:a.data||[],tests:t.data||[],inq:i.data||[]});
   };
   useEffect(()=>{reload()},[]);
