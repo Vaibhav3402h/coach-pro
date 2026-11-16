@@ -368,30 +368,48 @@ function Settings({inst}){
 
 function GateAdmin({d,inst}){
   const ref=React.useRef(null),sec=inst.gate_qr_secret;
+  const [rows,setRows]=useState([]),[err,setErr]=useState(''),[ld,setLd]=useState(true);
   useEffect(()=>{if(ref.current&&sec){ref.current.innerHTML='';new QRCode(ref.current,{text:sec,width:220,height:220})}},[sec]);
-  const tm=x=>new Date(x).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
-  const dt=x=>String(x).split('-').reverse().join('/');
+  const fetchRows=async()=>{
+    setLd(true);
+    const base=()=>sb.from('teacher_attendance').select('*').eq('institute_id',inst.id).order('punch_date',{ascending:false});
+    let r=await base().order('punch_time',{ascending:false}).limit(5000);
+    if(r.error)r=await base().order('punch_at',{ascending:false}).limit(5000);
+    setLd(false);
+    if(r.error){setErr(r.error.message);setRows([]);return}
+    setErr('');setRows(r.data||[]);
+  };
+  useEffect(()=>{if(inst.id)fetchRows()},[inst.id]);
+  const tm=x=>{
+    if(x.punch_time){const m=String(x.punch_time).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if(m){let h=+m[1];const ap=h>=12?'PM':'AM';h=h%12||12;return String(h).padStart(2,'0')+':'+m[2]+(m[3]?':'+m[3]:'')+' '+ap}
+      return String(x.punch_time)}
+    return x.punch_at?new Date(x.punch_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).toUpperCase():'—';
+  };
+  const dt=x=>String(x||'').split('-').reverse().join('/');
   const poster=()=>{
     const tmp=document.createElement('div');new QRCode(tmp,{text:sec,width:440,height:440});
     const src=tmp.querySelector('canvas').toDataURL('image/png');
     pdfOut(`<div style="text-align:center;border:6px solid #1e3a8a;padding:36px 20px"><div style="font-size:34px;font-weight:bold;color:#1e3a8a">${esc(inst.name)}</div><div style="font-size:22px;margin:10px 0 24px;letter-spacing:2px">OFFICIAL SCHOOL GATE QR</div><img src="${src}" style="width:440px;height:440px"/><div style="font-size:20px;margin-top:24px;font-weight:bold">Teachers: scan this QR with CoachPro to punch in</div><div style="font-size:14px;margin-top:8px;color:#555">Time and date are recorded automatically by the server (IST). Do not damage or cover this QR.</div></div>`,'Gate_QR_Poster',false);
   };
   const csv=()=>{const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
-    const rows=[['Teacher Name','Email','Date','Punch-In Time (IST)','Status'],...d.tatt.map(x=>[x.teacher_name,x.teacher_email,dt(x.punch_date),tm(x.punch_at),x.status])];
-    dl('teacher_attendance_log.csv','\uFEFF'+rows.map(r=>r.map(q).join(',')).join('\n'))};
+    const out=[['teacher_name','teacher_email','punch_date','punch_time','status'],...rows.map(x=>[x.teacher_name,x.teacher_email,dt(x.punch_date),tm(x),x.status])];
+    dl('teacher_attendance_log.csv','\uFEFF'+out.map(r=>r.map(q).join(',')).join('\n'))};
+  const c="border border-slate-300 px-2 py-1.5";
   return <div>
     <div className="bg-white rounded-xl p-4 shadow-sm mb-3 text-center">
       <h3 className="font-bold">Official School Gate QR</h3>
       {sec?<div><div ref={ref} className="flex justify-center my-3"></div>
         <button onClick={poster} className={btn()}>Download / Print Gate QR Poster</button>
         <p className="text-xs text-slate-500 mt-2">Print this poster and paste it at the school entrance gate. Teachers scan it from their phone to punch in.</p></div>
-      :<p className="text-sm text-red-600 mt-2">Gate QR is not available yet. Run coachpro_gate_upgrade.sql in Supabase and refresh.</p>}</div>
-    <div className="flex justify-between items-center mb-2"><h3 className="font-bold">Teacher Attendance Register <span className="text-xs font-normal text-slate-500">(read-only)</span></h3>
-      <button onClick={csv} className={btn('green')}>Export Excel (.CSV) Sheet</button></div>
+      :<p className="text-sm text-red-600 mt-2">Gate QR is not available yet. Run coachpro_fix_roles.sql in Supabase and refresh.</p>}</div>
+    <div className="flex flex-wrap justify-between items-center gap-2 mb-2"><h3 className="font-bold">Teacher Attendance Register <span className="text-xs font-normal text-slate-500">(read-only)</span></h3>
+      <div className="flex gap-2"><button onClick={fetchRows} className="px-3 py-2 rounded-lg text-sm bg-white border">{ld?'Loading…':'Refresh'}</button><button onClick={csv} className={btn('green')}>Export Excel (.CSV) Sheet</button></div></div>
+    {err&&<div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm mb-2">Could not load the register: {err}</div>}
     <div className="overflow-x-auto bg-white rounded-xl shadow-sm"><table className="w-full text-sm border-collapse">
-      <thead className="bg-slate-100"><tr>{['Teacher Name','Email','Date','Exact Punch-In Time (IST)','Status'].map(h=><th key={h} className="border border-slate-300 px-2 py-1.5 text-left whitespace-nowrap">{h}</th>)}</tr></thead>
-      <tbody>{d.tatt.map(x=><tr key={x.id}><td className="border border-slate-300 px-2 py-1.5">{x.teacher_name}</td><td className="border border-slate-300 px-2 py-1.5">{x.teacher_email}</td><td className="border border-slate-300 px-2 py-1.5">{dt(x.punch_date)}</td><td className="border border-slate-300 px-2 py-1.5 whitespace-nowrap">{tm(x.punch_at)}</td><td className="border border-slate-300 px-2 py-1.5 text-green-700 font-semibold">{x.status}</td></tr>)}
-        {!d.tatt.length&&<tr><td colSpan="5" className="px-2 py-4 text-center text-slate-500">No punch-ins recorded yet.</td></tr>}</tbody></table></div></div>;
+      <thead className="bg-slate-100"><tr>{['Teacher Name','Email','Date','Punch-In Time (IST)','Status'].map(h=><th key={h} className={c+' text-left whitespace-nowrap'}>{h}</th>)}</tr></thead>
+      <tbody>{rows.map(x=><tr key={x.id}><td className={c}>{x.teacher_name}</td><td className={c}>{x.teacher_email}</td><td className={c}>{dt(x.punch_date)}</td><td className={c+' whitespace-nowrap'}>{tm(x)}</td><td className={c+' text-green-700 font-semibold'}>{x.status}</td></tr>)}
+        {!rows.length&&<tr><td colSpan="5" className="px-2 py-4 text-center text-slate-500">{ld?'Loading…':'No punch-in records yet.'}</td></tr>}</tbody></table></div></div>;
 }
 
 function GateScan({close}){
@@ -404,8 +422,10 @@ function GateScan({close}){
       let out;
       try{const r=await sb.rpc('teacher_qr_punch',{scanned_secret:txt.trim()});out=r.error?{ok:false,message:r.error.message}:(r.data||{ok:false,message:'No response from server. Please scan again.'})}
       catch(x){out={ok:false,message:'Network problem. Please check your internet and scan again.'}}
-      const tm=out.punched_at?new Date(out.punched_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+' IST':'';
-      out.msg=out.ok?(out.already?'Attendance already marked today at '+tm:'Attendance Marked at '+tm):(out.message||'Attendance could not be marked.');
+      const fmt=t=>t.toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true}).toUpperCase();
+      const tm=out.time||(out.punched_at?fmt(new Date(out.punched_at)):fmt(new Date()));
+      out.time=tm;
+      out.msg=out.ok?(out.msg||(out.already?'Punch-In already recorded today at '+tm:'Punch-In Recorded at '+tm)):(out.msg||out.message||'Attendance could not be marked.');
       setRes(out);setTimeout(()=>alert(out.msg),150);
       
     },()=>{}).catch(()=>setErr('Camera could not start. Please allow camera permission (the page must be opened over HTTPS).'));
@@ -417,6 +437,7 @@ function GateScan({close}){
     {res&&<div className={`rounded-xl p-5 text-center ${res.ok?'bg-green-50':'bg-red-50'}`}>
       <div className="text-5xl">{res.ok?'✅':'⛔'}</div>
       <p className={`font-bold text-xl mt-2 ${res.ok?'text-green-700':'text-red-700'}`}>{res.msg}</p>
+      {res.ok&&<p className="text-sm mt-1">Recorded at: <b>{res.time}</b></p>}
       
       <button onClick={close} className={btn(res.ok?'green':'red')+' mt-4'}>Close</button></div>}
   </Modal>;
