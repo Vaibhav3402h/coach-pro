@@ -9,6 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>@media print{body *{visibility:hidden}#receipt,#receipt *{visibility:visible}#receipt{position:absolute;left:0;top:0;width:100%}}</style>
 </head>
@@ -246,17 +248,17 @@ const TD='border:1px solid #333;padding:6px 8px;font-size:13px';
 const pdfOut=(html,name,land)=>{const el=document.createElement('div');el.style.cssText=`position:fixed;left:0;top:0;z-index:-1;width:${land?1050:760}px;background:#fff;padding:18px;font-family:Arial,sans-serif;color:#000`;el.innerHTML=html;document.body.appendChild(el);return html2pdf().set({margin:8,filename:name.replace(/[^\w.-]+/g,'_')+'.pdf',html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:land?'landscape':'portrait'}}).from(el).save().then(()=>el.remove(),()=>el.remove())};
 
 function Locked({inst,teacher}){
-  const [c,setC]=useState(false),[plan,setPlan]=useState(inst.plan||999);
+  const [c,setC]=useState(false),[plan,setPlan]=useState(999);
   const copy=()=>{navigator.clipboard&&navigator.clipboard.writeText(MY_UPI_ID);setC(true);setTimeout(()=>setC(false),1500)};
   if(teacher)return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">🔒</div><h2 className="font-bold text-lg mt-2">Access Paused</h2><p className="text-sm text-slate-500 mt-1">The subscription of {inst.name} has expired or is locked. Please ask your Principal to renew it.</p><button onClick={()=>sb.auth.signOut()} className="mt-4 text-sm text-slate-500">Log out</button></div></div>;
   return <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100"><div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl text-center">
     <div className="text-5xl">🔒</div>
     <h2 className="text-xl font-bold mt-2">Subscription Expired or Locked</h2>
     <p className="text-sm text-slate-500 mt-1">Access for <b>{inst.name}</b> is paused. Choose a plan and pay to unlock for 30 days.</p>
-    <div className="grid grid-cols-2 gap-2 my-4">{[[499,'Coaching Starter'],[999,'School ERP']].map(([a,l])=><button key={a} onClick={()=>setPlan(a)} className={`rounded-xl border-2 p-3 ${plan===a?'border-indigo-600 bg-indigo-50':'border-slate-200'}`}><div className="text-xl font-bold">₹{a}</div><div className="text-xs text-slate-500">{l} / month</div></button>)}</div>
+    <div className="grid grid-cols-2 gap-2 my-4">{[[999,'Monthly','per month'],[4999,'Yearly','Save ₹6,989']].map(([a,l,t])=><button key={a} onClick={()=>setPlan(a)} className={`rounded-xl border-2 p-3 ${plan===a?'border-indigo-600 bg-indigo-50':'border-slate-200'}`}><div className="text-xl font-bold">₹{a.toLocaleString('en-IN')}</div><div className="text-sm font-semibold">{l}</div><div className={`text-xs ${a===4999?'text-green-700 font-semibold':'text-slate-500'}`}>{t}</div></button>)}</div>
     <div className="bg-indigo-50 rounded-xl p-4 mb-4"><div className="text-xs text-slate-500">GPay UPI ID</div><div className="font-mono font-bold text-indigo-700 break-all">{MY_UPI_ID}</div>
       <button onClick={copy} className="mt-2 text-sm px-3 py-1 rounded-lg bg-white border">{c?'Copied ✓':'Copy UPI'}</button></div>
-    <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${plan}&cu=INR`} className={btn()+' block mb-2'}>Pay ₹{plan} via GPay / UPI</a>
+    <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${plan}&cu=INR`} className={btn()+' block mb-2'}>Pay ₹{plan.toLocaleString('en-IN')} via GPay / UPI</a>
     <a href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi, I have paid Rs.'+plan+' for CoachPro. Institute: '+inst.name+' ('+inst.email+'). Screenshot attached.')}`} target="_blank" rel="noreferrer" className={btn('green')+' block mb-2'}>Send Payment Screenshot on WhatsApp</a>
     <button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500 mt-2">Log out</button></div></div>;
 }
@@ -277,8 +279,9 @@ function SuperAdmin(){
       <div><div className="font-semibold">{i.name}</div><div className="text-xs text-slate-500">{i.email} · Expires {exp(i).toLocaleDateString('en-IN')}</div></div>
       <div className="flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-1 rounded-full ${active(i)?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{active(i)?'Active':'Locked'}</span>
         <button onClick={()=>act('admin_set_plan',{p_id:i.id,p_plan:(i.plan||999)===999?499:999})} className="px-3 py-2 rounded-lg text-sm bg-slate-100">Plan ₹{i.plan||999}</button>
-        <button onClick={()=>act('admin_extend',{p_id:i.id})} className={btn()}>Extend +30 Days</button>
-        <button onClick={()=>act('admin_set_lock',{p_id:i.id,p_lock:!i.locked})} className={btn(i.locked?'green':'red')}>{i.locked?'Unlock':'Lock'}</button></div></div>)}
+        <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:30})} className={btn()}>+30 Days (Monthly)</button>
+        <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:365})} className={btn('violet')}>+1 Year (Yearly ₹4,999)</button>
+        <button onClick={()=>act('admin_set_lock',{p_id:i.id,p_lock:!i.locked})} className={btn(i.locked?'green':'red')}>{i.locked?'Unlock School':'Lock School'}</button></div></div>)}
       {!rows.length&&<p className="text-slate-500 text-sm">No institutes registered yet.</p>}</div></div>;
 }
 
@@ -357,7 +360,8 @@ function Teachers({d,inst,reload}){
     if(r.error)return setErr(r.error.code==='23505'?'This email is already added as a teacher in another institute.':r.error.message);
     setErr('');setF({name:'',email:'',assigned_class:'All'});reload();
   };
-  const del=async t=>{if(!confirm(`Are you sure you want to delete ${t.name}? All records will be permanently removed.`))return;const r=await sb.from('teachers').delete().eq('id',t.id);if(r.error)alert(r.error.message);reload()};
+  const lock=async t=>{const r=await sb.from('teachers').update({locked:!t.locked}).eq('id',t.id);if(r.error)alert(r.error.message);reload()};
+  const del=async t=>{if(!confirm(`Are you sure you want to remove ${t.name}? The teacher will lose access permanently.`))return;const r=await sb.from('teachers').delete().eq('id',t.id);if(r.error)alert(r.error.message);reload()};
   return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3"><div className="grid grid-cols-2 gap-x-3">
     <F l="Teacher Name"><input className={inp} value={f.name} onChange={set('name')}/></F>
     <F l="Assigned Class"><input list="tc" className={inp} value={f.assigned_class} onChange={set('assigned_class')} placeholder="Class 10 or All"/></F></div>
@@ -367,8 +371,8 @@ function Teachers({d,inst,reload}){
     <button onClick={add} className={btn()}>+ Add Teacher</button>
     <p className="text-xs text-slate-500 mt-3 bg-amber-50 rounded-lg p-2">Note: The teacher just needs to open this same link and Sign Up using this exact email. After login they will see only their assigned class.</p></div>
     <div className="space-y-2">{d.teachers.map(t=><div key={t.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
-      <div><div className="font-semibold">{t.name}</div><div className="text-xs text-slate-500">{t.email} · Class: {t.assigned_class}</div></div>
-      <button onClick={()=>del(t)} title="Delete" className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs">🗑</button></div>)}
+      <div><div className="font-semibold">{t.name}</div><div className="text-xs text-slate-500">{t.email} · Class: {t.assigned_class}{t.locked&&<b className="text-red-600"> · LOCKED</b>}</div></div>
+      <div className="flex gap-1"><button onClick={()=>lock(t)} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium ${t.locked?'bg-green-600 text-white':'bg-amber-100 text-amber-800'}`}>{t.locked?'Unlock Teacher':'Lock Teacher'}</button><button onClick={()=>del(t)} className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs">🗑 Remove Teacher</button></div></div>)}
       {!d.teachers.length&&<p className="text-sm text-slate-500">No teachers added yet.</p>}</div></div>;
 }
 
@@ -377,31 +381,85 @@ function Settings({inst}){
   return <div className="bg-white rounded-xl p-4 shadow-sm text-sm space-y-2">
     {[['Institute',inst.name],['Plan','₹'+plan+' / month'],['Valid until',exp.toLocaleDateString('en-IN')]].map(([a,b])=><div key={a} className="flex justify-between border-b py-1"><span className="text-slate-500">{a}</span><b>{b}</b></div>)}
     <p className="text-xs text-slate-500 pt-2">To renew, pay via UPI and send the screenshot on WhatsApp.</p>
-    <div className="flex gap-2 flex-wrap">{[499,999].map(a=><a key={a} href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${a}&cu=INR`} className={btn()}>Pay ₹{a}</a>)}
+    <div className="flex gap-2 flex-wrap">{[999,4999].map(a=><a key={a} href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${a}&cu=INR`} className={btn()}>Pay ₹{a.toLocaleString('en-IN')}</a>)}
       <a href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi, I have paid for CoachPro. Institute: '+inst.name)}`} target="_blank" rel="noreferrer" className={btn('green')}>Send Screenshot</a></div></div>;
+}
+
+function GateAdmin({d,inst}){
+  const ref=React.useRef(null),sec=inst.gate_qr_secret;
+  useEffect(()=>{if(ref.current&&sec){ref.current.innerHTML='';new QRCode(ref.current,{text:sec,width:220,height:220})}},[sec]);
+  const tm=x=>new Date(x).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
+  const dt=x=>String(x).split('-').reverse().join('/');
+  const poster=()=>{
+    const tmp=document.createElement('div');new QRCode(tmp,{text:sec,width:440,height:440});
+    const src=tmp.querySelector('canvas').toDataURL('image/png');
+    pdfOut(`<div style="text-align:center;border:6px solid #1e3a8a;padding:36px 20px"><div style="font-size:34px;font-weight:bold;color:#1e3a8a">${esc(inst.name)}</div><div style="font-size:22px;margin:10px 0 24px;letter-spacing:2px">OFFICIAL SCHOOL GATE QR</div><img src="${src}" style="width:440px;height:440px"/><div style="font-size:20px;margin-top:24px;font-weight:bold">Teachers: scan this QR with CoachPro to punch in</div><div style="font-size:14px;margin-top:8px;color:#555">Time and date are recorded automatically by the server (IST). Do not damage or cover this QR.</div></div>`,'Gate_QR_Poster',false);
+  };
+  const csv=()=>{const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+    const rows=[['Teacher Name','Email','Date','Punch-In Time (IST)','Status'],...d.tatt.map(x=>[x.teacher_name,x.teacher_email,dt(x.punch_date),tm(x.punch_at),x.status])];
+    dl('teacher_attendance_log.csv','\uFEFF'+rows.map(r=>r.map(q).join(',')).join('\n'))};
+  return <div>
+    <div className="bg-white rounded-xl p-4 shadow-sm mb-3 text-center">
+      <h3 className="font-bold">Official School Gate QR</h3>
+      {sec?<div><div ref={ref} className="flex justify-center my-3"></div>
+        <button onClick={poster} className={btn()}>Download / Print Gate QR Poster</button>
+        <p className="text-xs text-slate-500 mt-2">Print this poster and paste it at the school entrance gate. Teachers scan it from their phone to punch in.</p></div>
+      :<p className="text-sm text-red-600 mt-2">Gate QR is not available yet. Run coachpro_gate_upgrade.sql in Supabase and refresh.</p>}</div>
+    <div className="flex justify-between items-center mb-2"><h3 className="font-bold">Teacher Attendance Register <span className="text-xs font-normal text-slate-500">(read-only)</span></h3>
+      <button onClick={csv} className={btn('green')}>Export Excel (.CSV) Sheet</button></div>
+    <div className="overflow-x-auto bg-white rounded-xl shadow-sm"><table className="w-full text-sm border-collapse">
+      <thead className="bg-slate-100"><tr>{['Teacher Name','Email','Date','Exact Punch-In Time (IST)','Status'].map(h=><th key={h} className="border border-slate-300 px-2 py-1.5 text-left whitespace-nowrap">{h}</th>)}</tr></thead>
+      <tbody>{d.tatt.map(x=><tr key={x.id}><td className="border border-slate-300 px-2 py-1.5">{x.teacher_name}</td><td className="border border-slate-300 px-2 py-1.5">{x.teacher_email}</td><td className="border border-slate-300 px-2 py-1.5">{dt(x.punch_date)}</td><td className="border border-slate-300 px-2 py-1.5 whitespace-nowrap">{tm(x.punch_at)}</td><td className="border border-slate-300 px-2 py-1.5 text-green-700 font-semibold">{x.status}</td></tr>)}
+        {!d.tatt.length&&<tr><td colSpan="5" className="px-2 py-4 text-center text-slate-500">No punch-ins recorded yet.</td></tr>}</tbody></table></div></div>;
+}
+
+function GateScan({close}){
+  const [res,setRes]=useState(null),[err,setErr]=useState('');
+  useEffect(()=>{
+    const sc=new Html5Qrcode('gate-reader');let done=false;
+    sc.start({facingMode:'environment'},{fps:10,qrbox:240},async txt=>{
+      if(done)return;done=true;
+      try{await sc.stop()}catch(e){}
+      const r=await sb.rpc('teacher_qr_punch',{scanned_secret:txt.trim()});
+      setRes(r.error?{ok:false,message:r.error.message}:r.data);
+    },()=>{}).catch(()=>setErr('Camera could not start. Please allow camera permission (the page must be opened over HTTPS).'));
+    return()=>{if(!done){try{sc.stop().catch(()=>{})}catch(e){}}};
+  },[]);
+  const when=res&&res.punched_at?new Date(res.punched_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+' IST':'';
+  return <Modal title="Scan School Gate QR" close={close}>
+    {!res&&<div><div id="gate-reader" style={{width:'100%'}}></div>{err?<p className="text-sm text-red-600 mt-2">{err}</p>:<p className="text-sm text-slate-500 text-center mt-2">Point your camera at the school gate QR code.</p>}</div>}
+    {res&&<div className={`rounded-xl p-5 text-center ${res.ok?'bg-green-50':'bg-red-50'}`}>
+      <div className="text-5xl">{res.ok?'✅':'⛔'}</div>
+      <p className={`font-bold text-lg mt-2 ${res.ok?'text-green-700':'text-red-700'}`}>{res.ok?(res.already?'Already punched in today':'Punch-In Recorded'):res.message}</p>
+      {res.ok&&<p className="text-sm mt-1">{res.already?'First punch of the day: ':'Recorded at: '}<b>{when}</b></p>}
+      <button onClick={close} className={btn(res.ok?'green':'red')+' mt-4'}>Close</button></div>}
+  </Modal>;
 }
 
 function Dashboard({inst,role,assigned,tname}){
   const P=role==='principal';
-  const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],exams:[],inq:[],teachers:[]}),[add,setAdd]=useState(false);
+  const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],exams:[],inq:[],teachers:[],tatt:[]}),[add,setAdd]=useState(false),[scan,setScan]=useState(false);
   const reload=async()=>{
     const q=[sb.from('students').select('*').order('name'),sb.from('attendance').select('*').eq('att_date',today()),sb.from('exam_marks').select('*')];
     if(P)q.push(sb.from('inquiries').select('*').order('created_at',{ascending:false}),sb.from('teachers').select('*').order('name'));
-    const r=await Promise.all(q),a=(assigned||'All').toLowerCase();
+    q.push(sb.from('teacher_attendance').select('*').order('punch_at',{ascending:false}).limit(3000));
+    const r=await Promise.all(q),a=(assigned||'All').toLowerCase(),ta=r[r.length-1].data||[];
     const students=(r[0].data||[]).filter(s=>P||a==='all'||(s.course||'').toLowerCase()===a);
     const ids=new Set(students.map(s=>s.id));
-    setD({students,att:(r[1].data||[]).filter(x=>ids.has(x.student_id)),exams:(r[2].data||[]).filter(x=>ids.has(x.student_id)),inq:P?(r[3].data||[]):[],teachers:P?(r[4].data||[]):[]});
+    setD({students,att:(r[1].data||[]).filter(x=>ids.has(x.student_id)),exams:(r[2].data||[]).filter(x=>ids.has(x.student_id)),inq:P?(r[3].data||[]):[],teachers:P?(r[4].data||[]):[],tatt:ta});
   };
   useEffect(()=>{reload()},[]);
   const pend=d.students.reduce((x,s)=>x+Math.max(0,s.fee-s.paid),0);
   const pres=d.att.filter(a=>a.status==='present').length,pct=d.att.length?Math.round(pres*100/d.att.length):0;
-  const tabs=P?[['home','Home'],['students','Students'],['fees','Fees'],['attendance','Attendance'],['exams','Exams & Report Cards'],['teachers','Manage Teachers'],['inquiries','Inquiries'],['settings','Settings']]:[['home','Home'],['students','Students'],['attendance','Attendance'],['exams','Exams & Report Cards']];
+  const ist=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),tp=d.tatt.find(x=>x.punch_date===ist);
+  const tabs=P?[['home','Home'],['students','Students'],['fees','Fees'],['attendance','Attendance'],['exams','Exams & Report Cards'],['teachers','Manage Teachers'],['gate','Gate QR & Staff Attendance'],['inquiries','Inquiries'],['settings','Settings']]:[['home','Home'],['students','Students'],['attendance','Attendance'],['exams','Exams & Report Cards']];
   const kpis=P?[['Active Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700'],['Pending Fees',inr(pend),'text-amber-700'],['New Inquiries',d.inq.length,'text-violet-700']]:[['My Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700']];
   const p={d,inst,reload};
   return <div className="max-w-3xl mx-auto p-3 pb-10">
     <div className="flex justify-between items-center mb-3"><div><h1 className="font-bold text-lg">🎓 {inst.name}</h1><div className="text-xs text-slate-500">{P?'Principal / Owner':`Teacher: ${tname} · Class: ${assigned}`}</div></div><button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500">Log out</button></div>
     <div className="flex gap-1 overflow-x-auto mb-4">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${tab===k?'bg-indigo-600 text-white':'bg-white'}`}>{l}</button>)}</div>
     {tab==='home'&&<div>
+      {!P&&<div className="mb-4"><button onClick={()=>setScan(true)} className="w-full py-5 rounded-2xl text-white text-lg font-bold bg-green-600 hover:bg-green-700 shadow">📷 Scan School Gate QR</button>{tp&&<div className="text-sm text-green-700 text-center mt-2">✅ Punched in today at {new Date(tp.punch_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})} IST</div>}</div>}
       <div className="grid grid-cols-2 gap-3 mb-4">{kpis.map(([a,b,c])=><div key={a} className="bg-white rounded-xl p-4 shadow-sm"><div className="text-xs text-slate-500">{a}</div><div className={`text-2xl font-bold ${c}`}>{b}</div></div>)}</div>
       <div className="flex flex-wrap gap-2">{P&&<button onClick={()=>setAdd(true)} className={btn()}>+ Add Student</button>}<button onClick={()=>setTab('attendance')} className={btn('green')}>Mark Batch Attendance</button>{!P&&<button onClick={()=>setTab('exams')} className={btn()}>Enter Exam Marks</button>}{P&&<button onClick={()=>setTab('inquiries')} className={btn('violet')}>+ Add Inquiry</button>}</div></div>}
     {tab==='students'&&<Students {...p} ro={!P} openAdd={()=>setAdd(true)}/>}
@@ -409,8 +467,10 @@ function Dashboard({inst,role,assigned,tname}){
     {tab==='attendance'&&<Attendance {...p}/>}
     {tab==='exams'&&<Exams {...p}/>}
     {P&&tab==='teachers'&&<Teachers {...p}/>}
+    {P&&tab==='gate'&&<GateAdmin {...p}/>}
     {P&&tab==='inquiries'&&<Inquiries {...p}/>}
     {P&&tab==='settings'&&<Settings inst={inst}/>}
+    {scan&&<GateScan close={()=>{setScan(false);reload()}}/>}
     {P&&add&&<StudentModal inst={inst} close={()=>setAdd(false)} done={()=>{setAdd(false);reload()}}/>}</div>;
 }
 
@@ -427,6 +487,7 @@ function App(){
   if(ctx.role==='none')return <div><Setup reload={load}/><div className="text-center pb-6 text-xs text-slate-500">Are you a teacher? Ask your Principal to add this email ({s.user.email}) in Manage Teachers, then refresh.<br/><button onClick={()=>sb.auth.signOut()} className="mt-2 underline">Log out</button></div></div>;
   const inst=ctx.institute,exp=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0));
   if(inst.locked||exp<new Date())return <Locked inst={inst} teacher={ctx.role==='teacher'}/>;
+  if(ctx.role==='teacher'&&ctx.teacher_locked)return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">🔒</div><h2 className="font-bold text-lg mt-2">Access Locked by Principal</h2><p className="text-sm text-slate-500 mt-1">Please contact your Principal to unlock your account.</p><button onClick={()=>sb.auth.signOut()} className="mt-4 text-sm text-slate-500">Log out</button></div></div>;
   return <Dashboard inst={inst} role={ctx.role} assigned={ctx.assigned_class} tname={ctx.teacher_name}/>;
 }
 
