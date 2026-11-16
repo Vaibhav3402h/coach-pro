@@ -272,8 +272,8 @@ function Exams({d,inst,reload}){
   const cls=c0||classes[0]||'';
   const stu=d.students.filter(s=>s.course===cls);
   const saved=d.exams.filter(e=>e.class_name===cls&&e.exam_type===ex),by={};saved.forEach(e=>by[e.student_id]=e);
-  const subs=custom||(saved.length?Object.keys(saved[0].subjects_json).map(n=>({n,m:saved[0].subjects_json[n].m})):DEF_SUBJECTS.map(n=>({n,m:100})));
-  const val=(id,n)=>mk[id]&&mk[id][n]!==undefined?mk[id][n]:(by[id]&&by[id].subjects_json[n]&&by[id].subjects_json[n].o!=null?String(by[id].subjects_json[n].o):'');
+  const subs=custom||(saved.length&&saved[0].subjects_json&&Object.keys(saved[0].subjects_json).length?Object.keys(saved[0].subjects_json).map(n=>({n,m:(saved[0].subjects_json[n]||{}).m||100})):DEF_SUBJECTS.map(n=>({n,m:100})));
+  const val=(id,n)=>mk[id]&&mk[id][n]!==undefined?mk[id][n]:(by[id]&&by[id].subjects_json&&by[id].subjects_json[n]&&by[id].subjects_json[n].o!=null?String(by[id].subjects_json[n].o):'');
   const rows=stu.map(s=>{let to=0,tm=0,any=false,fail=false;subs.forEach(u=>{const v=val(s.id,u.n);tm+=+u.m||0;if(v!==''&&!isNaN(+v)){any=true;to+=+v;if(+u.m&&+v/+u.m*100<33)fail=true}});const pct=any&&tm?to/tm*100:null;return{...s,to,tm,any,fail,pct,grade:pct===null?'—':gradeOf(pct,fail)}});
   const ranked=rows.filter(r=>r.any).sort((a,b)=>b.to-a.to);
   ranked.forEach((r,i)=>{r.rank=i>0&&r.to===ranked[i-1].to?ranked[i-1].rank:i+1});
@@ -455,6 +455,70 @@ function Dashboard({inst,role,assigned,tname}){
     {P&&add&&<StudentModal inst={inst} close={()=>setAdd(false)} done={()=>{setAdd(false);reload()}}/>}</div>;
 }
 
+// Accepts nested ({institute:{...}}) or flat ({institute_id, inst_name, ...}) role data; never returns null fields that crash the UI
+const normCtx=c=>{
+  if(Array.isArray(c))c=c[0];
+  if(!c||typeof c!=='object')return {role:'none'};
+  const i=(c.institute&&typeof c.institute==='object')?c.institute:{};
+  let role=String(c.role||'none').toLowerCase();if(role==='owner')role='principal';
+  const far=new Date(Date.now()+365*864e5).toISOString();
+  return {...c,role,
+    institute:{...i,id:i.id||c.institute_id||c.iid||null,name:i.name||c.inst_name||c.institute_name||c.school_name||'Your School',email:i.email||c.email||'',
+      trial_ends:i.trial_ends||c.trial_ends||far,paid_until:i.paid_until||c.paid_until||null,locked:!!(i.locked!=null?i.locked:c.locked),plan:i.plan||c.plan||999},
+    assigned_class:c.assigned_class||'All',teacher_name:c.teacher_name||'Teacher',teacher_locked:!!c.teacher_locked};
+};
+
+class Boundary extends React.Component{
+  constructor(p){super(p);this.state={err:null}}
+  static getDerivedStateFromError(e){return {err:e}}
+  componentDidCatch(e){console.error(e)}
+  render(){
+    if(this.state.err)return <Notice icon="⚠️" title="Something went wrong" text="The screen could not be displayed. Please reload the page. If it happens again, send the details below to the software owner."><button onClick={()=>location.reload()} className={btn()}>Reload Page</button><p className="text-[11px] text-slate-400 break-words">Details: {String((this.state.err&&this.state.err.message)||this.state.err)}</p></Notice>;
+    return this.props.children;
+  }
+}
+
+function TeacherDashboard({ctx}){
+  const base=(ctx&&ctx.institute)||{},sname=base.name||'Your School',assigned=(ctx&&ctx.assigned_class)||'All',tname=(ctx&&ctx.teacher_name)||'Teacher';
+  const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],exams:[],tatt:[]}),[scan,setScan]=useState(false),[err,setErr]=useState('');
+  const reload=async()=>{
+    try{
+      const [s,a,e,t]=await Promise.all([
+        sb.from('students').select('*').order('name'),
+        sb.from('attendance').select('*').eq('att_date',today()),
+        sb.from('exam_marks').select('*'),
+        sb.from('teacher_attendance').select('*').order('punch_at',{ascending:false}).limit(60)]);
+      const g=x=>(x&&Array.isArray(x.data))?x.data:[],al=String(assigned).toLowerCase();
+      const students=g(s).filter(x=>al==='all'||String(x.course||'').toLowerCase()===al),ids=new Set(students.map(x=>x.id));
+      setD({students,att:g(a).filter(x=>ids.has(x.student_id)),exams:g(e).filter(x=>ids.has(x.student_id)),tatt:g(t)});
+      setErr(s&&s.error?s.error.message:'');
+    }catch(x){setErr((x&&x.message)||'Could not load data')}
+  };
+  useEffect(()=>{reload()},[]);
+  const iid=base.id||(d.students[0]&&d.students[0].institute_id)||null;
+  const inst={...base,id:iid,name:sname};
+  const pres=d.att.filter(a=>a.status==='present').length,pct=d.att.length?Math.round(pres*100/d.att.length):0;
+  const ist=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),tp=d.tatt.find(x=>x.punch_date===ist);
+  const tabs=[['home','Home'],['attendance','Mark Attendance'],['exams','Exam Marks'],['students','My Students']];
+  const p={d:{...d,inq:[],teachers:[]},inst,reload};
+  return <div className="max-w-3xl mx-auto p-3 pb-10">
+    <div className="bg-white rounded-xl shadow-sm p-3 mb-3 flex justify-between items-center gap-2">
+      <div><div className="font-bold text-lg">👩‍🏫 {tname}</div><div className="text-xs text-slate-500">{sname} · Class: {assigned}</div></div>
+      <button onClick={()=>sb.auth.signOut()} className="px-3 py-1.5 rounded-lg bg-slate-100 text-sm">Log out</button></div>
+    {err&&<div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm mb-3">Some data could not be loaded: {err}</div>}
+    <div className="flex gap-1 overflow-x-auto mb-4">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${tab===k?'bg-indigo-600 text-white':'bg-white'}`}>{l}</button>)}</div>
+    {tab==='home'&&<div>
+      <button onClick={()=>setScan(true)} className="w-full py-6 rounded-2xl text-white text-xl font-bold bg-green-600 hover:bg-green-700 shadow mb-2">📷 Scan School Gate QR</button>
+      {tp&&<div className="text-sm text-green-700 text-center mb-3">✅ Punched in today at {new Date(tp.punch_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})} IST</div>}
+      <div className="grid grid-cols-2 gap-3 my-4">{[['My Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700']].map(([a,b,c])=><div key={a} className="bg-white rounded-xl p-4 shadow-sm"><div className="text-xs text-slate-500">{a}</div><div className={`text-2xl font-bold ${c}`}>{b}</div></div>)}</div>
+      <div className="flex flex-wrap gap-2"><button onClick={()=>setTab('attendance')} className={btn('green')}>Mark Class Attendance</button><button onClick={()=>setTab('exams')} className={btn()}>Enter Exam Marks</button></div></div>}
+    {tab==='attendance'&&<Attendance {...p}/>}
+    {tab==='exams'&&<Exams {...p}/>}
+    {tab==='students'&&<Students {...p} ro={true} openAdd={()=>{}}/>}
+    {scan&&<GateScan close={()=>{setScan(false);reload()}}/>}
+  </div>;
+}
+
 const getIntent=()=>{try{return localStorage.getItem('cp_intent')||'principal'}catch(e){return 'principal'}};
 
 function Auth(){
@@ -500,7 +564,7 @@ function App(){
   const load=async()=>{
     setCtx(undefined);let last={message:'No response from server'};
     for(let k=0;k<2;k++){
-      try{const r=await sb.rpc('get_my_school_role');if(!r.error&&r.data&&r.data.role){setCtx(r.data);return}last=r.error||last}catch(x){last=x}
+      try{const r=await sb.rpc('get_my_school_role');if(!r.error&&r.data){setCtx(normCtx(r.data));return}last=r.error||last}catch(x){last=x}
       await new Promise(z=>setTimeout(z,700));
     }
     setCtx({role:'error',msg:(last&&last.message)||'Unknown error'});
@@ -526,10 +590,11 @@ function App(){
   const inst=ctx.institute,exp=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0));
   if(inst.locked||exp<new Date())return <Locked inst={inst} teacher={ctx.role==='teacher'}/>;
   if(ctx.role==='teacher'&&ctx.teacher_locked)return <Notice icon="🔒" title="Access Locked by Principal" text="Please contact your Principal to unlock your account."/>;
+  if(ctx.role==='teacher')return <Boundary><TeacherDashboard ctx={ctx}/></Boundary>;
   return <Dashboard inst={inst} role={ctx.role} assigned={ctx.assigned_class} tname={ctx.teacher_name}/>;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+ReactDOM.createRoot(document.getElementById('root')).render(<Boundary><App/></Boundary>);
 </script>
 </body>
 </html>
