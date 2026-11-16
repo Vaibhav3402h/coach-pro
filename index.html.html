@@ -36,25 +36,6 @@ const WAB=({href,children})=><a href={href} target="_blank" rel="noreferrer" cla
 const F=({l,children})=><label className="block text-xs font-medium text-slate-600 mb-3">{l}{children}</label>;
 const Modal=({title,close,children})=><div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-2"><div className="bg-white rounded-2xl w-full max-w-lg max-h-[92vh] overflow-auto p-5"><div className="flex justify-between mb-3"><h3 className="font-bold text-lg">{title}</h3><button onClick={close} className="text-slate-400 text-xl">✕</button></div>{children}</div></div>;
 
-function Auth(){
-  const [m,setM]=useState('in'),[e,setE]=useState(''),[p,setP]=useState(''),[msg,setMsg]=useState('');
-  const go=async()=>{
-    setMsg('');
-    const r=m==='in'?await sb.auth.signInWithPassword({email:e,password:p}):await sb.auth.signUp({email:e,password:p});
-    if(r.error)setMsg(r.error.message); else if(m==='up'&&!r.data.session)setMsg('Account created. Check your email to confirm, then log in.');
-  };
-  return <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-600 to-violet-700">
-    <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
-      <h1 className="text-2xl font-bold text-indigo-700">🎓 CoachPro</h1>
-      <p className="text-sm text-slate-500 mb-4">Manage students, fees and attendance. 7-day free trial.</p>
-      <F l="Email"><input className={inp} type="email" value={e} onChange={x=>setE(x.target.value)}/></F>
-      <F l="Password"><input className={inp} type="password" value={p} onChange={x=>setP(x.target.value)}/></F>
-      {msg&&<p className="text-sm text-red-600 mb-2">{msg}</p>}
-      <button onClick={go} className={btn()+' w-full'}>{m==='in'?'Log In':'Sign Up'}</button>
-      <button onClick={()=>setM(m==='in'?'up':'in')} className="mt-3 text-sm text-indigo-600 w-full">{m==='in'?"New here? Create account":"Have an account? Log in"}</button>
-    </div></div>;
-}
-
 function Setup({reload}){
   const [n,setN]=useState('');
   const go=async()=>{if(!n.trim())return;const r=await sb.rpc('create_institute',{p_name:n.trim()});if(r.error)alert(r.error.message);else reload();};
@@ -255,7 +236,7 @@ function Locked({inst,teacher}){
     <div className="text-5xl">🔒</div>
     <h2 className="text-xl font-bold mt-2">Subscription Expired or Locked</h2>
     <p className="text-sm text-slate-500 mt-1">Access for <b>{inst.name}</b> is paused. Choose a plan and pay to unlock for 30 days.</p>
-    <div className="grid grid-cols-2 gap-2 my-4">{[[999,'Monthly','per month'],[4999,'Yearly','Save ₹6,989']].map(([a,l,t])=><button key={a} onClick={()=>setPlan(a)} className={`rounded-xl border-2 p-3 ${plan===a?'border-indigo-600 bg-indigo-50':'border-slate-200'}`}><div className="text-xl font-bold">₹{a.toLocaleString('en-IN')}</div><div className="text-sm font-semibold">{l}</div><div className={`text-xs ${a===4999?'text-green-700 font-semibold':'text-slate-500'}`}>{t}</div></button>)}</div>
+    <div className="grid grid-cols-2 gap-2 my-4">{[[999,'Monthly','per month'],[5500,'Yearly','Save ₹6,488']].map(([a,l,t])=><button key={a} onClick={()=>setPlan(a)} className={`rounded-xl border-2 p-3 ${plan===a?'border-indigo-600 bg-indigo-50':'border-slate-200'}`}><div className="text-xl font-bold">₹{a.toLocaleString('en-IN')}</div><div className="text-sm font-semibold">{l}</div><div className={`text-xs ${a===5500?'text-green-700 font-semibold':'text-slate-500'}`}>{t}</div></button>)}</div>
     <div className="bg-indigo-50 rounded-xl p-4 mb-4"><div className="text-xs text-slate-500">GPay UPI ID</div><div className="font-mono font-bold text-indigo-700 break-all">{MY_UPI_ID}</div>
       <button onClick={copy} className="mt-2 text-sm px-3 py-1 rounded-lg bg-white border">{c?'Copied ✓':'Copy UPI'}</button></div>
     <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${plan}&cu=INR`} className={btn()+' block mb-2'}>Pay ₹{plan.toLocaleString('en-IN')} via GPay / UPI</a>
@@ -280,7 +261,7 @@ function SuperAdmin(){
       <div className="flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-1 rounded-full ${active(i)?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{active(i)?'Active':'Locked'}</span>
         <button onClick={()=>act('admin_set_plan',{p_id:i.id,p_plan:(i.plan||999)===999?499:999})} className="px-3 py-2 rounded-lg text-sm bg-slate-100">Plan ₹{i.plan||999}</button>
         <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:30})} className={btn()}>+30 Days (Monthly)</button>
-        <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:365})} className={btn('violet')}>+1 Year (Yearly ₹4,999)</button>
+        <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:365})} className={btn('violet')}>+1 Year (Yearly ₹5,500)</button>
         <button onClick={()=>act('admin_set_lock',{p_id:i.id,p_lock:!i.locked})} className={btn(i.locked?'green':'red')}>{i.locked?'Unlock School':'Lock School'}</button></div></div>)}
       {!rows.length&&<p className="text-slate-500 text-sm">No institutes registered yet.</p>}</div></div>;
 }
@@ -381,7 +362,7 @@ function Settings({inst}){
   return <div className="bg-white rounded-xl p-4 shadow-sm text-sm space-y-2">
     {[['Institute',inst.name],['Plan','₹'+plan+' / month'],['Valid until',exp.toLocaleDateString('en-IN')]].map(([a,b])=><div key={a} className="flex justify-between border-b py-1"><span className="text-slate-500">{a}</span><b>{b}</b></div>)}
     <p className="text-xs text-slate-500 pt-2">To renew, pay via UPI and send the screenshot on WhatsApp.</p>
-    <div className="flex gap-2 flex-wrap">{[999,4999].map(a=><a key={a} href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${a}&cu=INR`} className={btn()}>Pay ₹{a.toLocaleString('en-IN')}</a>)}
+    <div className="flex gap-2 flex-wrap">{[999,5500].map(a=><a key={a} href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${a}&cu=INR`} className={btn()}>Pay ₹{a.toLocaleString('en-IN')}</a>)}
       <a href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi, I have paid for CoachPro. Institute: '+inst.name)}`} target="_blank" rel="noreferrer" className={btn('green')}>Send Screenshot</a></div></div>;
 }
 
@@ -474,20 +455,77 @@ function Dashboard({inst,role,assigned,tname}){
     {P&&add&&<StudentModal inst={inst} close={()=>setAdd(false)} done={()=>{setAdd(false);reload()}}/>}</div>;
 }
 
+const getIntent=()=>{try{return localStorage.getItem('cp_intent')||'principal'}catch(e){return 'principal'}};
+
+function Auth(){
+  const TABS={
+    principal:{label:'School / Principal',icon:'🏫',sub:'Manage your school or coaching institute. New schools get a 7-day free trial.',up:'New School? Sign Up (7-day free trial)',inn:'Already registered? Log in',btnIn:'Log In as Principal',btnUp:'Create School Account'},
+    teacher:{label:'Teacher',icon:'👩‍🏫',sub:'Use the exact email your Principal added in Manage Teachers.',up:'First-time Teacher? Activate Account / Sign Up',inn:'Already activated? Log in',btnIn:'Log In as Teacher',btnUp:'Activate Teacher Account'},
+    admin:{label:'Super Admin',icon:'👑',sub:'Restricted to the CoachPro software owner.',up:'First time? Create Super Admin account',inn:'Have an account? Log in',btnIn:'Log In as Super Admin',btnUp:'Create Super Admin Account'}
+  };
+  const [tab,setTab]=useState('principal'),[m,setM]=useState('in'),[e,setE]=useState(''),[p,setP]=useState(''),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false);
+  const t=TABS[tab];
+  const go=async()=>{
+    setMsg('');const em=e.trim().toLowerCase();
+    if(!em||!p)return setMsg('Please enter your email and password.');
+    if(tab==='admin'&&em!==ADMIN_EMAIL)return setMsg('This login is only for the Super Admin.');
+    setBusy(true);
+    try{localStorage.setItem('cp_intent',tab)}catch(x){}
+    const r=m==='in'?await sb.auth.signInWithPassword({email:em,password:p}):await sb.auth.signUp({email:em,password:p});
+    setBusy(false);
+    if(r.error)return setMsg(r.error.message);
+    if(m==='up'&&!r.data.session)setMsg('Account created. Please check your email to confirm it, then log in on this tab.');
+  };
+  return <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-600 to-violet-700">
+    <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-xl">
+      <h1 className="text-2xl font-bold text-indigo-700">🎓 CoachPro</h1>
+      <p className="text-xs text-slate-500 mb-3">School & Coaching Management</p>
+      <div className="grid grid-cols-3 gap-1 bg-slate-100 rounded-xl p-1 mb-4">{Object.entries(TABS).map(([k,v])=><button key={k} onClick={()=>{setTab(k);setM('in');setMsg('')}} className={`rounded-lg py-2 text-xs font-semibold leading-tight ${tab===k?'bg-indigo-600 text-white shadow':'text-slate-600'}`}><div className="text-base">{v.icon}</div>{v.label}</button>)}</div>
+      <p className="text-sm text-slate-600 mb-3">{t.sub}</p>
+      <F l="Email"><input className={inp} type="email" value={e} onChange={x=>setE(x.target.value)}/></F>
+      <F l="Password"><input className={inp} type="password" value={p} onChange={x=>setP(x.target.value)}/></F>
+      {msg&&<p className="text-sm text-red-600 mb-2">{msg}</p>}
+      <button onClick={go} disabled={busy} className={btn()+' w-full'}>{busy?'Please wait…':(m==='in'?t.btnIn:t.btnUp)}</button>
+      <button onClick={()=>{setM(m==='in'?'up':'in');setMsg('')}} className="mt-3 text-sm text-indigo-600 w-full">{m==='in'?t.up:t.inn}</button>
+    </div></div>;
+}
+
+function Notice({icon,title,text,children}){
+  return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">{icon}</div><h2 className="font-bold text-lg mt-2">{title}</h2><p className="text-sm text-slate-600 mt-2">{text}</p><div className="mt-4 flex flex-col gap-2">{children}<button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500">Log out</button></div></div></div>;
+}
+
 function App(){
   const [s,setS]=useState(undefined),[ctx,setCtx]=useState(undefined);
   useEffect(()=>{sb.auth.getSession().then(({data})=>setS(data.session));const {data}=sb.auth.onAuthStateChange((_,x)=>setS(x));return()=>data.subscription.unsubscribe()},[]);
-  const load=async()=>{const r=await sb.rpc('get_my_school_role');setCtx(r.error?{role:'error',msg:r.error.message}:r.data)};
-  useEffect(()=>{if(s&&s.user.email!==ADMIN_EMAIL){setCtx(undefined);load()}},[s&&s.user.id]);
+  const load=async()=>{
+    setCtx(undefined);let last={message:'No response from server'};
+    for(let k=0;k<2;k++){
+      try{const r=await sb.rpc('get_my_school_role');if(!r.error&&r.data&&r.data.role){setCtx(r.data);return}last=r.error||last}catch(x){last=x}
+      await new Promise(z=>setTimeout(z,700));
+    }
+    setCtx({role:'error',msg:(last&&last.message)||'Unknown error'});
+  };
+  useEffect(()=>{if(s&&s.user.email!==ADMIN_EMAIL)load()},[s&&s.user.id]);
+  const intent=getIntent();
   if(s===undefined)return <div className="p-10 text-center text-slate-500">Loading…</div>;
   if(!s)return <Auth/>;
   if(s.user.email===ADMIN_EMAIL)return <SuperAdmin/>;
   if(ctx===undefined)return <div className="p-10 text-center text-slate-500">Loading…</div>;
-  if(ctx.role==='error')return <div className="p-6 max-w-md mx-auto text-center"><p className="text-red-600 font-semibold">Database is not ready</p><p className="text-sm text-slate-600 mt-2">{ctx.msg}</p><p className="text-sm text-slate-500 mt-2">Run the ERP upgrade SQL (coachpro_erp_upgrade.sql) in Supabase, then refresh.</p><button onClick={()=>sb.auth.signOut()} className="mt-4 text-sm text-slate-500">Log out</button></div>;
-  if(ctx.role==='none')return <div><Setup reload={load}/><div className="text-center pb-6 text-xs text-slate-500">Are you a teacher? Ask your Principal to add this email ({s.user.email}) in Manage Teachers, then refresh.<br/><button onClick={()=>sb.auth.signOut()} className="mt-2 underline">Log out</button></div></div>;
+  if(ctx.role==='error'){
+    const missing=/get_my_school_role|schema cache|does not exist|column/i.test(ctx.msg||'');
+    return <Notice icon="🔄" title="We could not load your account" text={intent==='teacher'?'Please try again in a moment. If this keeps happening, tell your Principal.':'Please check your internet connection and try again.'}>
+      <button onClick={load} className={btn()}>Try Again</button>
+      {missing&&<p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2">Setup note for the software owner: run coachpro_fix_roles.sql once in the Supabase SQL Editor.</p>}
+      <p className="text-[11px] text-slate-400 break-words">Details: {ctx.msg}</p></Notice>;
+  }
+  if(ctx.role==='none'){
+    if(intent==='teacher')return <Notice icon="📧" title="Teacher account not found" text="Your email is not added by any School Principal yet. Ask your Principal to add your email in Manage Teachers first."><button onClick={load} className={btn()}>Check Again</button></Notice>;
+    return <div><Setup reload={load}/><div className="text-center pb-6 text-xs text-slate-500">Are you a teacher? Log out and use the Teacher tab on the login screen.<br/><button onClick={()=>sb.auth.signOut()} className="mt-2 underline">Log out</button></div></div>;
+  }
+  if(ctx.role==='principal'&&intent==='teacher')return <Notice icon="🏫" title="This is a Principal account" text="This email belongs to a School Principal. Please log out and use the School / Principal tab."/>;
   const inst=ctx.institute,exp=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0));
   if(inst.locked||exp<new Date())return <Locked inst={inst} teacher={ctx.role==='teacher'}/>;
-  if(ctx.role==='teacher'&&ctx.teacher_locked)return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">🔒</div><h2 className="font-bold text-lg mt-2">Access Locked by Principal</h2><p className="text-sm text-slate-500 mt-1">Please contact your Principal to unlock your account.</p><button onClick={()=>sb.auth.signOut()} className="mt-4 text-sm text-slate-500">Log out</button></div></div>;
+  if(ctx.role==='teacher'&&ctx.teacher_locked)return <Notice icon="🔒" title="Access Locked by Principal" text="Please contact your Principal to unlock your account."/>;
   return <Dashboard inst={inst} role={ctx.role} assigned={ctx.assigned_class} tname={ctx.teacher_name}/>;
 }
 
