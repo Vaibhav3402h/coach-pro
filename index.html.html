@@ -27,7 +27,7 @@ const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
 const inr=n=>'₹'+Number(n||0).toLocaleString('en-IN');
 const ph=p=>{p=(p||'').replace(/\D/g,'');return p.length===10?'91'+p:p};
 const wa=(p,t)=>`https://wa.me/${ph(p)}?text=${encodeURIComponent(t)}`;
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
 const COURSES=['Class 10','Class 12','JEE/NEET','Foundation'];
 const BATCHES=['Morning 7 AM','Evening 4 PM'];
 const inp="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500";
@@ -226,7 +226,7 @@ const EXAMS=['Unit Test 1','Unit Test 2','Half Yearly','Annual Exam'];
 const DEF_SUBJECTS=['Hindi','English','Maths','Science','Social Science'];
 const gradeOf=(p,fail)=>fail||p<33?'Fail':p>=90?'A1':p>=80?'A2':p>=70?'B1':p>=60?'B2':p>=50?'C':'D';
 const TD='border:1px solid #333;padding:6px 8px;font-size:13px';
-const pdfOut=(html,name,land)=>{const el=document.createElement('div');el.style.cssText=`position:fixed;left:0;top:0;z-index:-1;width:${land?1050:760}px;background:#fff;padding:18px;font-family:Arial,sans-serif;color:#000`;el.innerHTML=html;document.body.appendChild(el);return html2pdf().set({margin:8,filename:name.replace(/[^\w.-]+/g,'_')+'.pdf',html2canvas:{scale:2},jsPDF:{unit:'mm',format:'a4',orientation:land?'landscape':'portrait'}}).from(el).save().then(()=>el.remove(),()=>el.remove())};
+const pdfOut=(html,name,land)=>{const el=document.createElement('div');el.style.cssText=`position:fixed;left:0;top:0;z-index:-1;width:${land?1050:760}px;background:#fff;padding:18px;font-family:Arial,sans-serif;color:#000`;el.innerHTML='<style>tr{page-break-inside:avoid}</style>'+html;document.body.appendChild(el);return html2pdf().set({margin:8,filename:name.replace(/[^\w.-]+/g,'_')+'.pdf',html2canvas:{scale:2},pagebreak:{mode:['css','legacy']},jsPDF:{unit:'mm',format:'a4',orientation:land?'landscape':'portrait'}}).from(el).save().then(()=>el.remove(),()=>el.remove())};
 
 function Locked({inst,teacher}){
   const [c,setC]=useState(false),[plan,setPlan]=useState(999);
@@ -274,7 +274,7 @@ function Exams({d,inst,reload}){
   const saved=d.exams.filter(e=>e.class_name===cls&&e.exam_type===ex),by={};saved.forEach(e=>by[e.student_id]=e);
   const subs=custom||(saved.length&&saved[0].subjects_json&&Object.keys(saved[0].subjects_json).length?Object.keys(saved[0].subjects_json).map(n=>({n,m:(saved[0].subjects_json[n]||{}).m||100})):DEF_SUBJECTS.map(n=>({n,m:100})));
   const val=(id,n)=>mk[id]&&mk[id][n]!==undefined?mk[id][n]:(by[id]&&by[id].subjects_json&&by[id].subjects_json[n]&&by[id].subjects_json[n].o!=null?String(by[id].subjects_json[n].o):'');
-  const rows=stu.map(s=>{let to=0,tm=0,any=false,fail=false;subs.forEach(u=>{const v=val(s.id,u.n);tm+=+u.m||0;if(v!==''&&!isNaN(+v)){any=true;to+=+v;if(+u.m&&+v/+u.m*100<33)fail=true}});const pct=any&&tm?to/tm*100:null;return{...s,to,tm,any,fail,pct,grade:pct===null?'—':gradeOf(pct,fail)}});
+  const rows=stu.map(s=>{let to=0,tm=0,any=false,fail=false;subs.forEach(u=>{const v=val(s.id,u.n);tm+=+u.m||0;if(v!==''&&!isNaN(+v)){any=true;to+=+v;if(+u.m&&+v/+u.m*100<33)fail=true}});const pct=any?(tm?to/tm*100:0):null;return{...s,to,tm,any,fail,pct,grade:pct===null?'—':gradeOf(pct,fail)}});
   const ranked=rows.filter(r=>r.any).sort((a,b)=>b.to-a.to);
   ranked.forEach((r,i)=>{r.rank=i>0&&r.to===ranked[i-1].to?ranked[i-1].rank:i+1});
   const setMark=(id,n,v)=>setMk({...mk,[id]:{...(mk[id]||{}),[n]:v}});
@@ -291,18 +291,18 @@ function Exams({d,inst,reload}){
     setMk({});await reload();alert('Marks saved for '+ranked.length+' students.');
   };
   const card=r=>{
-    if(!r.any)return alert('Enter marks for this student first.');
-    const html=`<div style="border:3px double #333;padding:18px"><div style="text-align:center;font-size:24px;font-weight:bold">${esc(inst.name)}</div><div style="text-align:center;font-size:16px;margin:4px 0 12px">REPORT CARD — ${esc(ex)}</div>
+        const html=`<div style="border:3px double #333;padding:18px"><div style="text-align:center;font-size:24px;font-weight:bold">${esc(inst.name)}</div><div style="text-align:center;font-size:16px;margin:4px 0 12px">REPORT CARD — ${esc(ex)}</div>
 <table style="width:100%;font-size:14px;margin-bottom:12px"><tr><td><b>Student:</b> ${esc(r.name)}</td><td><b>Class:</b> ${esc(cls)}</td></tr><tr><td><b>Parent:</b> ${esc(r.parent_name)}</td><td><b>Date:</b> ${new Date().toLocaleDateString('en-IN')}</td></tr></table>
 <table style="border-collapse:collapse;width:100%"><tr style="background:#e5e7eb;font-weight:bold"><td style="${TD}">Subject</td><td style="${TD};text-align:center">Max Marks</td><td style="${TD};text-align:center">Marks Obtained</td></tr>${subs.map(u=>{const v=val(r.id,u.n);return`<tr><td style="${TD}">${esc(u.n)}</td><td style="${TD};text-align:center">${u.m}</td><td style="${TD};text-align:center">${v===''?'—':v}</td></tr>`}).join('')}<tr style="font-weight:bold;background:#f3f4f6"><td style="${TD}">Total</td><td style="${TD};text-align:center">${r.tm}</td><td style="${TD};text-align:center">${r.to}</td></tr></table>
-<table style="width:100%;font-size:15px;margin:14px 0"><tr><td><b>Percentage:</b> ${r.pct.toFixed(1)}%</td><td><b>Grade:</b> ${r.grade}</td><td><b>Rank:</b> ${ord(r.rank)} of ${ranked.length}</td><td><b>Result:</b> ${r.grade==='Fail'?'Fail':'Pass'}</td></tr></table>
+<table style="width:100%;font-size:15px;margin:14px 0"><tr><td><b>Percentage:</b> ${r.pct==null?'-':r.pct.toFixed(1)+'%'}</td><td><b>Grade:</b> ${r.grade}</td><td><b>Rank:</b> ${r.any?ord(r.rank)+' of '+ranked.length:'-'}</td><td><b>Result:</b> ${!r.any?'-':r.grade==='Fail'?'Fail':'Pass'}</td></tr></table>
 <div style="display:flex;justify-content:space-between;margin-top:56px;font-size:13px"><div style="border-top:1px solid #000;padding-top:4px;width:28%;text-align:center">Class Teacher</div><div style="border-top:1px solid #000;padding-top:4px;width:28%;text-align:center">Parent's Signature</div><div style="border-top:1px solid #000;padding-top:4px;width:28%;text-align:center">Principal Signature</div></div></div>`;
     pdfOut(html,`${r.name}_${ex}_report_card`,false);
   };
   const sheet=()=>{
-    if(!ranked.length)return alert('Enter marks first.');
+    const all=[...ranked,...rows.filter(r=>!r.any)];
+    if(!all.length)return alert('No students found for this class.');
     const h=['Rank','Student Name',...subs.map(u=>`${esc(u.n)} (${u.m})`),'Total','%','Grade'];
-    const html=`<div style="text-align:center;font-size:22px;font-weight:bold">${esc(inst.name)}</div><div style="text-align:center;font-size:15px;margin:4px 0 10px">${esc(ex)} — Result Register — ${esc(cls)} — ${new Date().toLocaleDateString('en-IN')}</div><table style="border-collapse:collapse;width:100%"><tr style="background:#e5e7eb;font-weight:bold">${h.map(x=>`<td style="${TD}">${x}</td>`).join('')}</tr>${ranked.map(r=>`<tr><td style="${TD}">${r.rank}</td><td style="${TD}">${esc(r.name)}</td>${subs.map(u=>`<td style="${TD};text-align:center">${val(r.id,u.n)||'—'}</td>`).join('')}<td style="${TD};font-weight:bold">${r.to}/${r.tm}</td><td style="${TD}">${r.pct.toFixed(1)}%</td><td style="${TD};font-weight:bold;color:${r.grade==='Fail'?'#b91c1c':'#15803d'}">${r.grade}</td></tr>`).join('')}</table>`;
+    const html=`<div style="text-align:center;font-size:22px;font-weight:bold">${esc(inst.name)}</div><div style="text-align:center;font-size:15px;margin:4px 0 10px">${esc(ex)} — Result Register — ${esc(cls)} — ${new Date().toLocaleDateString('en-IN')}</div><table style="border-collapse:collapse;width:100%"><tr style="background:#e5e7eb;font-weight:bold">${h.map(x=>`<td style="${TD}">${x}</td>`).join('')}</tr>${all.map(r=>`<tr><td style="${TD}">${r.any?r.rank:'-'}</td><td style="${TD}">${esc(r.name)}</td>${subs.map(u=>`<td style="${TD};text-align:center">${val(r.id,u.n)||'—'}</td>`).join('')}<td style="${TD};font-weight:bold">${r.any?r.to+'/'+r.tm:'-'}</td><td style="${TD}">${r.pct==null?'-':r.pct.toFixed(1)+'%'}</td><td style="${TD};font-weight:bold;color:${r.grade==='Fail'?'#b91c1c':'#15803d'}">${r.any?r.grade:'-'}</td></tr>`).join('')}</table>`;
     pdfOut(html,`${cls}_${ex}_result_register`,true);
   };
   const items=ranked.map(r=>({name:r.name,phone:r.parent_phone,text:`Result - ${inst.name}\nExam: ${ex} (${cls})\nStudent: ${r.name}\n${subs.map(u=>`${u.n}: ${val(r.id,u.n)||'-'}/${u.m}`).join('\n')}\nTotal: ${r.to}/${r.tm}\nPercentage: ${r.pct.toFixed(1)}%\nGrade: ${r.grade}\nClass Rank: ${ord(r.rank)} of ${ranked.length}`}));
@@ -456,7 +456,7 @@ function Dashboard({inst,role,assigned,tname}){
     setD({students,att:(r[1].data||[]).filter(x=>ids.has(x.student_id)),exams:(r[2].data||[]).filter(x=>ids.has(x.student_id)),inq:P?(r[3].data||[]):[],teachers:P?(r[4].data||[]):[],tatt:ta});
   };
   useEffect(()=>{reload()},[]);
-  const pend=d.students.reduce((x,s)=>x+Math.max(0,s.fee-s.paid),0);
+  const pend=d.students.reduce((x,s)=>x+Math.max(0,(+s.fee||0)-(+s.paid||0)),0);
   const pres=d.att.filter(a=>a.status==='present').length,pct=d.att.length?Math.round(pres*100/d.att.length):0;
   const ist=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),tp=d.tatt.find(x=>x.punch_date===ist);
   const tabs=P?[['home','Home'],['students','Students'],['fees','Fees'],['attendance','Attendance'],['exams','Exams & Report Cards'],['teachers','Manage Teachers'],['gate','Gate QR & Staff Attendance'],['inquiries','Inquiries'],['settings','Settings']]:[['home','Home'],['students','Students'],['attendance','Attendance'],['exams','Exams & Report Cards']];
@@ -605,6 +605,11 @@ function App(){
     setCtx({role:'error',msg:(last&&last.message)||'Unknown error'});
   };
   useEffect(()=>{if(s&&s.user.email!==ADMIN_EMAIL)load()},[s&&s.user.id]);
+  useEffect(()=>{
+    if(!s||!ctx||ctx.role!=='teacher')return;
+    const id=setInterval(async()=>{try{const r=await sb.rpc('get_my_school_role');if(!r.error&&r.data)setCtx(normCtx(r.data))}catch(e){}},60000);
+    return()=>clearInterval(id);
+  },[s&&s.user.id,ctx&&ctx.role]);
   const intent=getIntent();
   if(s===undefined)return <div className="p-10 text-center text-slate-500">Loading…</div>;
   if(!s)return <Auth/>;
@@ -623,8 +628,8 @@ function App(){
   }
   if(ctx.role==='principal'&&intent==='teacher')return <Notice icon="🏫" title="This is a Principal account" text="This email belongs to a School Principal. Please log out and use the School / Principal tab."/>;
   const inst=ctx.institute,exp=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0));
+  if(ctx.role==='teacher'&&(ctx.teacher_locked||ctx.locked===true||inst.locked))return <div className="min-h-screen flex items-center justify-center p-4 bg-red-600"><div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center shadow-xl border-4 border-red-700"><div className="text-6xl">⛔</div><h2 className="font-bold text-2xl text-red-700 mt-2">Access Locked</h2><p className="text-sm text-slate-700 mt-2">Please contact your School Principal / Administrator.</p><button type="button" onClick={logout} style={{touchAction:'manipulation'}} className="relative z-50 cursor-pointer w-full mt-5 py-4 rounded-xl bg-red-600 active:bg-red-700 text-white text-lg font-bold">Log out</button></div></div>;
   if(inst.locked||exp<new Date())return <Locked inst={inst} teacher={ctx.role==='teacher'}/>;
-  if(ctx.role==='teacher'&&ctx.teacher_locked)return <Notice icon="🔒" title="Access Locked by Principal" text="Please contact your Principal to unlock your account."/>;
   if(ctx.role==='teacher')return <Boundary><TeacherDashboard ctx={ctx}/></Boundary>;
   return <Dashboard inst={inst} role={ctx.role} assigned={ctx.assigned_class} tname={ctx.teacher_name}/>;
 }
