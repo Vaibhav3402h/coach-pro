@@ -231,7 +231,7 @@ const pdfOut=(html,name,land)=>{const el=document.createElement('div');el.style.
 function Locked({inst,teacher}){
   const [c,setC]=useState(false),[plan,setPlan]=useState(999);
   const copy=()=>{navigator.clipboard&&navigator.clipboard.writeText(MY_UPI_ID);setC(true);setTimeout(()=>setC(false),1500)};
-  if(teacher)return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">🔒</div><h2 className="font-bold text-lg mt-2">Access Paused</h2><p className="text-sm text-slate-500 mt-1">The subscription of {inst.name} has expired or is locked. Please ask your Principal to renew it.</p><button onClick={()=>sb.auth.signOut()} className="mt-4 text-sm text-slate-500">Log out</button></div></div>;
+  if(teacher)return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">🔒</div><h2 className="font-bold text-lg mt-2">Access Paused</h2><p className="text-sm text-slate-500 mt-1">The subscription of {inst.name} has expired or is locked. Please ask your Principal to renew it.</p><button onClick={logout} className="mt-4 text-sm text-slate-500">Log out</button></div></div>;
   return <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100"><div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl text-center">
     <div className="text-5xl">🔒</div>
     <h2 className="text-xl font-bold mt-2">Subscription Expired or Locked</h2>
@@ -241,7 +241,7 @@ function Locked({inst,teacher}){
       <button onClick={copy} className="mt-2 text-sm px-3 py-1 rounded-lg bg-white border">{c?'Copied ✓':'Copy UPI'}</button></div>
     <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${plan}&cu=INR`} className={btn()+' block mb-2'}>Pay ₹{plan.toLocaleString('en-IN')} via GPay / UPI</a>
     <a href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi, I have paid Rs.'+plan+' for CoachPro. Institute: '+inst.name+' ('+inst.email+'). Screenshot attached.')}`} target="_blank" rel="noreferrer" className={btn('green')+' block mb-2'}>Send Payment Screenshot on WhatsApp</a>
-    <button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500 mt-2">Log out</button></div></div>;
+    <button onClick={logout} className="text-sm text-slate-500 mt-2">Log out</button></div></div>;
 }
 
 function SuperAdmin(){
@@ -253,7 +253,7 @@ function SuperAdmin(){
   const mrr=rows.filter(i=>i.paid_until&&new Date(i.paid_until)>new Date()&&!i.locked).reduce((a,i)=>a+(i.plan||999),0);
   const act=async(fn,a)=>{const r=await sb.rpc(fn,a);if(r.error)alert(r.error.message);load()};
   return <div className="max-w-5xl mx-auto p-4">
-    <div className="flex justify-between items-center mb-4"><h1 className="text-xl font-bold">👑 Super Admin</h1><button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500">Log out</button></div>
+    <div className="flex justify-between items-center mb-4"><h1 className="text-xl font-bold">👑 Super Admin</h1><button onClick={logout} className="text-sm text-slate-500">Log out</button></div>
     <div className="grid grid-cols-3 gap-3 mb-4">
       {[['Institutes',rows.length],['Active',rows.filter(active).length],['MRR',inr(mrr)]].map(([a,b])=><div key={a} className="bg-white rounded-xl p-3 shadow-sm"><div className="text-xs text-slate-500">{a}</div><div className="text-xl font-bold">{b}</div></div>)}</div>
     <div className="space-y-2">{rows.map(i=><div key={i.id} className="bg-white rounded-xl p-3 shadow-sm flex flex-wrap items-center gap-2 justify-between">
@@ -401,8 +401,13 @@ function GateScan({close}){
     sc.start({facingMode:'environment'},{fps:10,qrbox:240},async txt=>{
       if(done)return;done=true;
       try{await sc.stop()}catch(e){}
-      const r=await sb.rpc('teacher_qr_punch',{scanned_secret:txt.trim()});
-      setRes(r.error?{ok:false,message:r.error.message}:r.data);
+      let out;
+      try{const r=await sb.rpc('teacher_qr_punch',{scanned_secret:txt.trim()});out=r.error?{ok:false,message:r.error.message}:(r.data||{ok:false,message:'No response from server. Please scan again.'})}
+      catch(x){out={ok:false,message:'Network problem. Please check your internet and scan again.'}}
+      const tm=out.punched_at?new Date(out.punched_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true})+' IST':'';
+      out.msg=out.ok?(out.already?'Attendance already marked today at '+tm:'Attendance Marked at '+tm):(out.message||'Attendance could not be marked.');
+      setRes(out);setTimeout(()=>alert(out.msg),150);
+      
     },()=>{}).catch(()=>setErr('Camera could not start. Please allow camera permission (the page must be opened over HTTPS).'));
     return()=>{if(!done){try{sc.stop().catch(()=>{})}catch(e){}}};
   },[]);
@@ -411,8 +416,8 @@ function GateScan({close}){
     {!res&&<div><div id="gate-reader" style={{width:'100%'}}></div>{err?<p className="text-sm text-red-600 mt-2">{err}</p>:<p className="text-sm text-slate-500 text-center mt-2">Point your camera at the school gate QR code.</p>}</div>}
     {res&&<div className={`rounded-xl p-5 text-center ${res.ok?'bg-green-50':'bg-red-50'}`}>
       <div className="text-5xl">{res.ok?'✅':'⛔'}</div>
-      <p className={`font-bold text-lg mt-2 ${res.ok?'text-green-700':'text-red-700'}`}>{res.ok?(res.already?'Already punched in today':'Punch-In Recorded'):res.message}</p>
-      {res.ok&&<p className="text-sm mt-1">{res.already?'First punch of the day: ':'Recorded at: '}<b>{when}</b></p>}
+      <p className={`font-bold text-xl mt-2 ${res.ok?'text-green-700':'text-red-700'}`}>{res.msg}</p>
+      
       <button onClick={close} className={btn(res.ok?'green':'red')+' mt-4'}>Close</button></div>}
   </Modal>;
 }
@@ -437,7 +442,7 @@ function Dashboard({inst,role,assigned,tname}){
   const kpis=P?[['Active Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700'],['Pending Fees',inr(pend),'text-amber-700'],['New Inquiries',d.inq.length,'text-violet-700']]:[['My Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700']];
   const p={d,inst,reload};
   return <div className="max-w-3xl mx-auto p-3 pb-10">
-    <div className="flex justify-between items-center mb-3"><div><h1 className="font-bold text-lg">🎓 {inst.name}</h1><div className="text-xs text-slate-500">{P?'Principal / Owner':`Teacher: ${tname} · Class: ${assigned}`}</div></div><button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500">Log out</button></div>
+    <div className="flex justify-between items-center mb-3"><div><h1 className="font-bold text-lg">🎓 {inst.name}</h1><div className="text-xs text-slate-500">{P?'Principal / Owner':`Teacher: ${tname} · Class: ${assigned}`}</div></div><button onClick={logout} className="text-sm text-slate-500">Log out</button></div>
     <div className="flex gap-1 overflow-x-auto mb-4">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${tab===k?'bg-indigo-600 text-white':'bg-white'}`}>{l}</button>)}</div>
     {tab==='home'&&<div>
       {!P&&<div className="mb-4"><button onClick={()=>setScan(true)} className="w-full py-5 rounded-2xl text-white text-lg font-bold bg-green-600 hover:bg-green-700 shadow">📷 Scan School Gate QR</button>{tp&&<div className="text-sm text-green-700 text-center mt-2">✅ Punched in today at {new Date(tp.punch_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})} IST</div>}</div>}
@@ -502,9 +507,9 @@ function TeacherDashboard({ctx}){
   const tabs=[['home','Home'],['attendance','Mark Attendance'],['exams','Exam Marks'],['students','My Students']];
   const p={d:{...d,inq:[],teachers:[]},inst,reload};
   return <div className="max-w-3xl mx-auto p-3 pb-10">
-    <div className="bg-white rounded-xl shadow-sm p-3 mb-3 flex justify-between items-center gap-2">
-      <div><div className="font-bold text-lg">👩‍🏫 {tname}</div><div className="text-xs text-slate-500">{sname} · Class: {assigned}</div></div>
-      <button onClick={()=>sb.auth.signOut()} className="px-3 py-1.5 rounded-lg bg-slate-100 text-sm">Log out</button></div>
+    <div className="relative z-40 bg-white rounded-xl shadow-sm p-3 mb-3 flex justify-between items-center gap-3">
+      <div className="min-w-0 flex-1"><div className="font-bold text-lg truncate">👩‍🏫 {tname}</div><div className="text-xs text-slate-500 truncate">{sname} · Class: {assigned}</div></div>
+      <button type="button" onClick={logout} style={{touchAction:'manipulation'}} className="relative z-50 cursor-pointer shrink-0 px-5 py-3 rounded-xl bg-red-600 active:bg-red-700 text-white text-base font-bold min-w-[110px]">Log out</button></div>
     {err&&<div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm mb-3">Some data could not be loaded: {err}</div>}
     <div className="flex gap-1 overflow-x-auto mb-4">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${tab===k?'bg-indigo-600 text-white':'bg-white'}`}>{l}</button>)}</div>
     {tab==='home'&&<div>
@@ -519,6 +524,8 @@ function TeacherDashboard({ctx}){
   </div>;
 }
 
+let appReset=()=>{};
+const logout=async()=>{appReset();try{localStorage.removeItem('cp_intent')}catch(e){}try{await sb.auth.signOut({scope:'local'})}catch(e){}};
 const getIntent=()=>{try{return localStorage.getItem('cp_intent')||'principal'}catch(e){return 'principal'}};
 
 function Auth(){
@@ -555,11 +562,12 @@ function Auth(){
 }
 
 function Notice({icon,title,text,children}){
-  return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">{icon}</div><h2 className="font-bold text-lg mt-2">{title}</h2><p className="text-sm text-slate-600 mt-2">{text}</p><div className="mt-4 flex flex-col gap-2">{children}<button onClick={()=>sb.auth.signOut()} className="text-sm text-slate-500">Log out</button></div></div></div>;
+  return <div className="min-h-screen flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 max-w-sm text-center shadow"><div className="text-5xl">{icon}</div><h2 className="font-bold text-lg mt-2">{title}</h2><p className="text-sm text-slate-600 mt-2">{text}</p><div className="mt-4 flex flex-col gap-2">{children}<button onClick={logout} className="text-sm text-slate-500">Log out</button></div></div></div>;
 }
 
 function App(){
   const [s,setS]=useState(undefined),[ctx,setCtx]=useState(undefined);
+  appReset=()=>{setS(null);setCtx(undefined)};
   useEffect(()=>{sb.auth.getSession().then(({data})=>setS(data.session));const {data}=sb.auth.onAuthStateChange((_,x)=>setS(x));return()=>data.subscription.unsubscribe()},[]);
   const load=async()=>{
     setCtx(undefined);let last={message:'No response from server'};
@@ -584,7 +592,7 @@ function App(){
   }
   if(ctx.role==='none'){
     if(intent==='teacher')return <Notice icon="📧" title="Teacher account not found" text="Your email is not added by any School Principal yet. Ask your Principal to add your email in Manage Teachers first."><button onClick={load} className={btn()}>Check Again</button></Notice>;
-    return <div><Setup reload={load}/><div className="text-center pb-6 text-xs text-slate-500">Are you a teacher? Log out and use the Teacher tab on the login screen.<br/><button onClick={()=>sb.auth.signOut()} className="mt-2 underline">Log out</button></div></div>;
+    return <div><Setup reload={load}/><div className="text-center pb-6 text-xs text-slate-500">Are you a teacher? Log out and use the Teacher tab on the login screen.<br/><button onClick={logout} className="mt-2 underline">Log out</button></div></div>;
   }
   if(ctx.role==='principal'&&intent==='teacher')return <Notice icon="🏫" title="This is a Principal account" text="This email belongs to a School Principal. Please log out and use the School / Principal tab."/>;
   const inst=ctx.institute,exp=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0));
