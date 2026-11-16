@@ -481,6 +481,9 @@ function Dashboard({inst,role,assigned,tname}){
     {P&&add&&<StudentModal inst={inst} close={()=>setAdd(false)} done={()=>{setAdd(false);reload()}}/>}</div>;
 }
 
+// Flexible class matching: "Class 10", "class 10 ", "10", "10th" all match; text-only classes (e.g. JEE/NEET) match case-insensitively
+const classKey=v=>{const t=String(v==null?'':v).trim().toLowerCase(),m=t.match(/\d+/);return m?m[0]:t.replace(/\s+/g,' ')};
+const classMatch=(assigned,course)=>{const a=String(assigned==null?'':assigned).trim().toLowerCase();return !a||a==='all'||classKey(a)===classKey(course)};
 // Accepts nested ({institute:{...}}) or flat ({institute_id, inst_name, ...}) role data; never returns null fields that crash the UI
 const normCtx=c=>{
   if(Array.isArray(c))c=c[0];
@@ -510,12 +513,12 @@ function TeacherDashboard({ctx}){
   const reload=async()=>{
     try{
       const [s,a,e,t]=await Promise.all([
-        sb.from('students').select('*').order('name'),
+        (base.id?sb.from('students').select('*').eq('institute_id',base.id).order('name'):sb.from('students').select('*').order('name')),
         sb.from('attendance').select('*').eq('att_date',today()),
         sb.from('exam_marks').select('*'),
         sb.from('teacher_attendance').select('*').order('punch_at',{ascending:false}).limit(60)]);
-      const g=x=>(x&&Array.isArray(x.data))?x.data:[],al=String(assigned).toLowerCase();
-      const students=g(s).filter(x=>al==='all'||String(x.course||'').toLowerCase()===al),ids=new Set(students.map(x=>x.id));
+      const g=x=>(x&&Array.isArray(x.data))?x.data:[];
+      const students=g(s).filter(x=>classMatch(assigned,x.course)),ids=new Set(students.map(x=>x.id));
       setD({students,att:g(a).filter(x=>ids.has(x.student_id)),exams:g(e).filter(x=>ids.has(x.student_id)),tatt:g(t)});
       setErr(s&&s.error?s.error.message:'');
     }catch(x){setErr((x&&x.message)||'Could not load data')}
@@ -537,6 +540,7 @@ function TeacherDashboard({ctx}){
       <button onClick={()=>setScan(true)} className="w-full py-6 rounded-2xl text-white text-xl font-bold bg-green-600 hover:bg-green-700 shadow mb-2">📷 Scan School Gate QR</button>
       {tp&&<div className="text-sm text-green-700 text-center mb-3">✅ Punched in today at {new Date(tp.punch_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',hour12:true})} IST</div>}
       <div className="grid grid-cols-2 gap-3 my-4">{[['My Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700']].map(([a,b,c])=><div key={a} className="bg-white rounded-xl p-4 shadow-sm"><div className="text-xs text-slate-500">{a}</div><div className={`text-2xl font-bold ${c}`}>{b}</div></div>)}</div>
+      {!d.students.length&&<p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 mb-3">No students found for class “{assigned}”. The Principal must add students with the same class (for example “Class 10”, “10” or “10th”).</p>}
       <div className="flex flex-wrap gap-2"><button onClick={()=>setTab('attendance')} className={btn('green')}>Mark Class Attendance</button><button onClick={()=>setTab('exams')} className={btn()}>Enter Exam Marks</button></div></div>}
     {tab==='attendance'&&<Attendance {...p}/>}
     {tab==='exams'&&<Exams {...p}/>}
