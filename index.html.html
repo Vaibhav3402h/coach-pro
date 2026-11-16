@@ -513,14 +513,16 @@ function TeacherDashboard({ctx}){
   const reload=async()=>{
     try{
       const [s,a,e,t]=await Promise.all([
-        (base.id?sb.from('students').select('*').eq('institute_id',base.id).order('name'):sb.from('students').select('*').order('name')),
+        sb.rpc('get_my_class_students'),
         sb.from('attendance').select('*').eq('att_date',today()),
         sb.from('exam_marks').select('*'),
         sb.from('teacher_attendance').select('*').order('punch_at',{ascending:false}).limit(60)]);
       const g=x=>(x&&Array.isArray(x.data))?x.data:[];
-      const students=g(s).filter(x=>classMatch(assigned,x.course)),ids=new Set(students.map(x=>x.id));
+      let sl=g(s);
+      if(s&&s.error){const fb=await (base.id?sb.from('students').select('*').eq('institute_id',base.id):sb.from('students').select('*'));sl=g(fb).filter(x=>classMatch(assigned,x.course))}
+      const students=sl,ids=new Set(students.map(x=>x.id));
       setD({students,att:g(a).filter(x=>ids.has(x.student_id)),exams:g(e).filter(x=>ids.has(x.student_id)),tatt:g(t)});
-      setErr(s&&s.error?s.error.message:'');
+      setErr(s&&s.error?'The class student list could not be loaded the normal way ('+s.error.message+'). Ask the software owner to run coachpro_class_students.sql.':'');
     }catch(x){setErr((x&&x.message)||'Could not load data')}
   };
   useEffect(()=>{reload()},[]);
