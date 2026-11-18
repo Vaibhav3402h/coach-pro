@@ -98,24 +98,39 @@ const isoDate=s=>{const m=(s||'').match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
 function parseCSV(t){const rows=[];let r=[],c='',q=false;for(let i=0;i<t.length;i++){const ch=t[i];if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}else if(ch=='"')q=true;else if(ch==','){r.push(c);c=''}else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;r.push(c);c='';if(r.some(x=>x.trim()))rows.push(r);r=[]}else c+=ch}r.push(c);if(r.some(x=>x.trim()))rows.push(r);return rows}
 
 function Queue({items,label,close}){
-  const [i,setI]=useState(0),n=items.length,cur=items[i];
-  const next=()=>setTimeout(()=>setI(x=>x+1),150);
+  const bulkQueue=items||[],[currentIndex,setCurrentIndex]=useState(0),[blocked,setBlocked]=useState(''),lock=React.useRef(false);
+  const n=bulkQueue.length,cur=bulkQueue[currentIndex];
+  const url=cur?wa(cur.phone,cur.text):'';
+  const send=()=>{
+    if(!cur||lock.current)return;
+    lock.current=true;setTimeout(()=>{lock.current=false},600);
+    const w=window.open(url,'_blank');
+    if(!w){setBlocked(url);return}
+    setBlocked('');setCurrentIndex(prev=>prev+1);
+  };
+  const skip=()=>{setBlocked('');setCurrentIndex(prev=>prev+1)};
   return <Modal title="Bulk WhatsApp Queue" close={close}>
     {cur?<div className="text-center">
-      <div className="h-2 bg-slate-100 rounded mb-3"><div className="h-2 bg-green-600 rounded" style={{width:(i/n*100)+'%'}}></div></div>
-      <div className="text-xs text-slate-500">{i+1} of {n}</div><div className="text-lg font-bold">{cur.name}</div><div className="text-sm text-slate-500 mb-2">{cur.phone}</div>
+      <div className="text-sm font-semibold text-slate-600 mb-1">Sending {currentIndex+1} of {n}</div>
+      <div className="h-2 bg-slate-100 rounded mb-3"><div className="h-2 bg-green-600 rounded" style={{width:(currentIndex/n*100)+'%'}}></div></div>
+      <div className="text-lg font-bold">{cur.name}</div>
+      <div className="text-sm text-slate-600 mb-2">Parent Phone: <b>{cur.phone}</b></div>
       <div className="text-xs bg-slate-50 rounded-lg p-2 mb-4 text-left whitespace-pre-line">{cur.text}</div>
-      <a href={wa(cur.phone,cur.text)} target="_blank" rel="noreferrer" onClick={next} className="block w-full py-4 rounded-xl text-white text-lg font-bold bg-green-600 hover:bg-green-700">{label} & Next ({i+1}/{n}) →</a>
-      <button onClick={()=>setI(x=>x+1)} className="mt-3 text-sm text-slate-500">Skip this one</button>
+      <button onClick={send} className="w-full py-4 rounded-xl text-white text-lg font-bold bg-green-600 hover:bg-green-700">Send on WhatsApp & Next →</button>
+      {blocked&&<div className="mt-3 bg-amber-50 rounded-lg p-3 text-sm"><p className="mb-2">Your browser blocked the pop-up. Tap the link below to open WhatsApp for {cur.name}.</p><a href={blocked} target="_blank" rel="noreferrer" onClick={()=>{setBlocked('');setTimeout(()=>setCurrentIndex(prev=>prev+1),200)}} className="inline-block px-4 py-2 rounded-lg bg-green-600 text-white font-semibold">Open WhatsApp & Next →</a></div>}
+      <button onClick={skip} className="mt-3 text-sm text-slate-500 px-4 py-2">Skip this one</button>
     </div>:<div className="text-center py-6"><div className="text-4xl">✅</div><p className="font-semibold mt-2">All {n} messages are done</p><button onClick={close} className={btn()+' mt-3'}>Close</button></div>}
   </Modal>;
 }
 
 function Students({d,inst,reload,openAdd,ro}){
-  const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false);
+  const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[view,setView]=useState('cols');
   const list=d.students.filter(s=>s.name.toLowerCase().includes(q.toLowerCase()));
   const del=async s=>{if(!confirm(`Are you sure you want to delete ${s.name}? All records will be permanently removed.`))return;const r=await sb.from('students').delete().eq('id',s.id);if(r.error)alert(r.error.message);reload()};
   const sample=()=>dl('coachpro_students_sample.csv','Student Name,Class,Batch,Parent Name,Parent Phone,Total Fee,Paid,Due Date\nRahul Sharma,Class 10,Morning 7 AM,Suresh Sharma,9876543210,1500,500,2026-12-05\nPriya Verma,Class 12,Evening 4 PM,Anil Verma,9123456780,2000,2000,2026-12-10\n');
+  const dueOf=x=>Math.max(0,(+x.fee||0)-(+x.paid||0));
+  const remind=x=>wa(x.parent_phone,`Dear Parent, fee of Rs.${dueOf(x)} for ${x.name} is due at ${inst.name}. Please pay at your earliest convenience.`);
+  const groups=(()=>{const m={};list.forEach(x=>{const k=classKey(x.course)||'—';(m[k]=m[k]||{k,name:/^\d+$/.test(k)?'Class '+k:(String(x.course||'').trim()||'No Class'),items:[]}).items.push(x)});return Object.values(m).sort((a,b)=>{const na=/^\d+$/.test(a.k),nb=/^\d+$/.test(b.k);return na&&nb?a.k-b.k:na?-1:nb?1:a.name.localeCompare(b.name)})})();
   const imp=async e=>{
     const file=e.target.files[0];e.target.value='';if(!file)return;setBusy(true);setMsg('');
     try{
@@ -143,11 +158,25 @@ function Students({d,inst,reload,openAdd,ro}){
       {!ro&&<label className={btn('violet')+' whitespace-nowrap cursor-pointer'}>{busy?'Importing…':'Import CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={imp} disabled={busy}/></label>}
       {!ro&&<button onClick={sample} className="px-3 py-2 rounded-lg text-sm bg-white border">Download Sample CSV</button>}</div>
     {msg&&<div className={`rounded-lg px-3 py-2 text-sm mb-3 ${msg.startsWith('ok:')?'bg-green-50 text-green-700':'bg-red-50 text-red-700'}`}>{msg.replace(/^(ok|error):/,'')}</div>}
+    {!ro&&<div className="flex gap-2 mb-3"><button onClick={()=>setView('cols')} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${view==='cols'?'bg-indigo-600 text-white':'bg-white border'}`}>Class Columns View</button><button onClick={()=>setView('list')} className={`px-3 py-1.5 rounded-lg text-sm font-medium ${view==='list'?'bg-indigo-600 text-white':'bg-white border'}`}>Table List View</button></div>}
+    {(!ro&&view==='cols')?(
+    <div className="flex gap-3 overflow-x-auto pb-3 items-start">{groups.map(g=>{const pend=g.items.reduce((a,x)=>a+dueOf(x),0);return <div key={g.k} className="w-[290px] min-w-[290px] shrink-0 bg-slate-50 rounded-xl p-2 border border-slate-200">
+      <div className="bg-indigo-600 text-white rounded-lg px-3 py-2 mb-2"><div className="flex justify-between items-center gap-2"><b>{g.name}</b><span className="bg-white text-indigo-700 text-xs font-bold rounded-full px-2 py-0.5">{g.items.length} students</span></div><div className="text-xs mt-1 text-indigo-100">Pending fees: <b className="text-white">{inr(pend)}</b></div></div>
+      <div className="space-y-2">{g.items.map(x=><div key={x.id} className="bg-white rounded-lg p-2 shadow-sm">
+        <div className="font-semibold text-sm">{x.name}</div><div className="text-xs text-slate-500">{x.batch} · {x.parent_name} {x.parent_phone}</div>
+        <div className="text-xs mt-1">Fee {inr(x.fee)} · Paid {inr(x.paid)} · Due <b className="text-amber-700">{inr(dueOf(x))}</b></div>
+        <div className="flex flex-wrap gap-1 mt-2 items-center text-xs"><button onClick={()=>setEd(x)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button>
+          {dueOf(x)>0?<WAB href={remind(x)}>WhatsApp Reminder</WAB>:<span className="px-1 text-green-700">Fees clear ✓</span>}
+          <button onClick={()=>setRc(x)} className="px-2 py-1.5 rounded-lg bg-slate-100">Receipt</button>
+          <button onClick={()=>del(x)} title="Delete" className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white">🗑</button></div></div>)}</div></div>})}
+      {!groups.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div>
+    ):(
     <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex flex-wrap justify-between gap-2">
       <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{s.course} · {s.batch} · {s.parent_name} {s.parent_phone}</div>
         {!ro&&<div className="text-xs mt-1">Fee {inr(s.fee)} · Paid {inr(s.paid)} · <b className="text-amber-700">Due {inr(s.fee-s.paid)}</b></div>}</div>
       {!ro&&<div className="flex gap-1 items-start text-xs"><button onClick={()=>setRc(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Receipt</button><button onClick={()=>setEd(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button><button onClick={()=>del(s)} title="Delete" className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white">🗑</button></div>}</div>)}
       {!list.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div>
+    )}
     {ed&&<StudentModal st={ed} inst={inst} close={()=>setEd(null)} done={()=>{setEd(null);reload()}}/>}
     {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}</div>;
 }
@@ -268,19 +297,19 @@ function SuperAdmin(){
 
 function Exams({d,inst,reload}){
   const classes=[...new Set(d.students.map(x=>x.course).filter(Boolean))];
-  const [c0,setC]=useState(''),[ex,setEx]=useState(EXAMS[0]),[custom,setCustom]=useState(null),[mk,setMk]=useState({}),[qu,setQu]=useState(false),[sv,setSv]=useState(false),[ns,setNs]=useState('');
+  const [c0,setC]=useState(''),[ex,setEx]=useState(EXAMS[0]),[custom,setCustom]=useState(null),[mk,setMk]=useState({}),[qu,setQu]=useState(false),[sv,setSv]=useState(false),[ns,setNs]=useState(''),[nm,setNm]=useState(100);
   const cls=c0||classes[0]||'';
   const stu=d.students.filter(s=>s.course===cls);
   const saved=d.exams.filter(e=>e.class_name===cls&&e.exam_type===ex),by={};saved.forEach(e=>by[e.student_id]=e);
   const subs=custom||(saved.length&&saved[0].subjects_json&&Object.keys(saved[0].subjects_json).length?Object.keys(saved[0].subjects_json).map(n=>({n,m:(saved[0].subjects_json[n]||{}).m||100})):DEF_SUBJECTS.map(n=>({n,m:100})));
   const val=(id,n)=>mk[id]&&mk[id][n]!==undefined?mk[id][n]:(by[id]&&by[id].subjects_json&&by[id].subjects_json[n]&&by[id].subjects_json[n].o!=null?String(by[id].subjects_json[n].o):'');
-  const rows=stu.map(s=>{let to=0,tm=0,any=false,fail=false;subs.forEach(u=>{const v=val(s.id,u.n);tm+=+u.m||0;if(v!==''&&!isNaN(+v)){any=true;to+=+v;if(+u.m&&+v/+u.m*100<33)fail=true}});const pct=any?(tm?to/tm*100:0):null;return{...s,to,tm,any,fail,pct,grade:pct===null?'—':gradeOf(pct,fail)}});
+  const rows=stu.map(s=>{let to=0,tm=0,any=false,fail=false;subs.forEach(u=>{const v=val(s.id,u.n),ent=v!==''&&!isNaN(+v);if(ent||DEF_SUBJECTS.includes(u.n))tm+=+u.m||0;if(ent){any=true;to+=+v;if(+u.m&&+v/+u.m*100<33)fail=true}});const pct=any?(tm?to/tm*100:0):null;return{...s,to,tm,any,fail,pct,grade:pct===null?'—':gradeOf(pct,fail)}});
   const ranked=rows.filter(r=>r.any).sort((a,b)=>b.to-a.to);
   ranked.forEach((r,i)=>{r.rank=i>0&&r.to===ranked[i-1].to?ranked[i-1].rank:i+1});
   const setMark=(id,n,v)=>setMk({...mk,[id]:{...(mk[id]||{}),[n]:v}});
   const setSub=(i,m)=>setCustom(subs.map((u,j)=>j===i?{...u,m}:u));
   const delSub=i=>subs.length>1&&setCustom(subs.filter((_,j)=>j!==i));
-  const addSub=()=>{const n=ns.trim();if(n&&!subs.some(u=>u.n.toLowerCase()===n.toLowerCase())){setCustom([...subs,{n,m:100}]);setNs('')}};
+  const addSub=()=>{const n=ns.trim();if(n&&!subs.some(u=>u.n.toLowerCase()===n.toLowerCase())){setCustom([...subs,{n,m:+nm>0?+nm:100}]);setNs('');setNm(100)}};
   const save=async()=>{
     if(!ranked.length)return alert('Enter marks for at least one student.');
     for(const r of ranked)for(const u of subs){const v=val(r.id,u.n);if(v!==''&&(+v<0||+v>+u.m))return alert(`Invalid marks for ${r.name} in ${u.n}. Marks must be between 0 and ${u.m}.`)}
@@ -310,8 +339,9 @@ function Exams({d,inst,reload}){
   return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3"><div className="grid grid-cols-2 gap-x-3">
     <F l="Class"><select className={inp} value={cls} onChange={e=>{setC(e.target.value);setCustom(null);setMk({})}}>{classes.map(x=><option key={x}>{x}</option>)}</select></F>
     <F l="Exam Type"><select className={inp} value={ex} onChange={e=>{setEx(e.target.value);setCustom(null);setMk({})}}>{EXAMS.map(x=><option key={x}>{x}</option>)}</select></F></div>
-    <div className="flex gap-2"><input className={inp+' !mt-0'} placeholder="Add subject (e.g. Computer)" value={ns} onChange={e=>setNs(e.target.value)}/><button onClick={addSub} className={btn()+' whitespace-nowrap'}>+ Subject</button></div>
-    <p className="text-xs text-slate-500 mt-2">Set max marks under each subject name. Grades: A1 90+, A2 80+, B1 70+, B2 60+, C 50+, D 33+, otherwise Fail (below 33% in any subject is also Fail).</p></div>
+    <div className="text-xs font-medium text-slate-600 mb-1">Optional / Custom Subject</div>
+    <div className="flex gap-2"><input className={inp+' !mt-0'} placeholder="e.g. Computer, Sanskrit, Biology, Art" value={ns} onChange={e=>setNs(e.target.value)}/><input className={inp+' !mt-0 !w-24'} type="number" placeholder="Max" title="Max marks" value={nm} onChange={e=>setNm(e.target.value)}/><button onClick={addSub} className={btn()+' whitespace-nowrap'}>+ Add Optional Subject</button></div>
+    <p className="text-xs text-slate-500 mt-2">Default subjects: Hindi, English, Maths, Science, Social Science. Add optional subjects above and remove any subject with ✕. Optional subjects count in a student's total only if marks are entered. Set max marks under each subject name. Grades: A1 90+, A2 80+, B1 70+, B2 60+, C 50+, D 33+, otherwise Fail (below 33% in any subject is also Fail).</p></div>
     {!stu.length?<p className="text-sm text-slate-500">No students found for this class.</p>:<div>
       <div className="overflow-x-auto bg-white rounded-xl shadow-sm mb-3"><table className="w-full text-sm border-collapse">
         <thead className="bg-slate-100"><tr><th className={c+' text-left'}>Rank</th><th className={c+' text-left'}>Student</th>
@@ -329,32 +359,68 @@ function Exams({d,inst,reload}){
     {qu&&<Queue items={items} label="Send Result" close={()=>setQu(false)}/>}</div>;
 }
 
+const ALL_CLASSES=Array.from({length:12},(_,i)=>'Class '+(i+1));
+const isAllVal=v=>String(v||'').split(',').some(x=>/^\s*all( classes)?\s*$/i.test(x));
+const splitClasses=v=>String(v||'').split(',').map(x=>x.trim()).filter(Boolean);
+
+function ClassPills({value,onChange,extra}){
+  const sel=splitClasses(value),all=isAllVal(value),opts=[];
+  [...ALL_CLASSES,...(extra||[]),...sel.filter(x=>!/^all/i.test(x))].forEach(c=>{if(c&&!opts.some(o=>classKey(o)===classKey(c)))opts.push(c)});
+  const on=c=>!all&&sel.some(x=>classKey(x)===classKey(c));
+  const toggle=c=>{
+    if(c==='All')return onChange(all?'':'All');
+    const cur=all?[]:sel,next=on(c)?cur.filter(x=>classKey(x)!==classKey(c)):[...cur,c];
+    onChange(opts.filter(o=>next.some(x=>classKey(x)===classKey(o))).join(', '));
+  };
+  const pill=(label,active,fn)=><button type="button" key={label} onClick={fn} className={`px-3 py-1.5 rounded-full text-sm border ${active?'bg-indigo-600 text-white border-indigo-600':'bg-white text-slate-700 border-slate-300'}`}>{active?'✓ ':''}{label}</button>;
+  return <div className="flex flex-wrap gap-2">{pill('All Classes',all,()=>toggle('All'))}{opts.map(c=>pill(c,on(c),()=>toggle(c)))}</div>;
+}
+
 function Teachers({d,inst,reload}){
-  const [f,setF]=useState({name:'',email:'',assigned_class:'All'}),[err,setErr]=useState('');
-  const classes=[...new Set(d.students.map(x=>x.course).filter(Boolean))];
+  const [f,setF]=useState({name:'',email:'',assigned_class:''}),[err,setErr]=useState(''),[ed,setEd]=useState(null),[edN,setEdN]=useState(''),[edC,setEdC]=useState('');
+  const extra=[...new Set(d.students.map(x=>x.course).filter(Boolean))];
   const set=k=>e=>setF({...f,[k]:e.target.value});
   const add=async()=>{
     const email=f.email.trim().toLowerCase();
     if(!f.name.trim()||!email.includes('@'))return setErr('Please enter the teacher name and a valid email.');
+    if(!f.assigned_class)return setErr('Please select at least one class, or All Classes.');
     if(d.teachers.some(t=>t.email.toLowerCase()===email))return setErr('A teacher with this email already exists.');
-    const r=await sb.from('teachers').insert({institute_id:inst.id,name:f.name.trim(),email,assigned_class:f.assigned_class.trim()||'All'});
+    const r=await sb.from('teachers').insert({institute_id:inst.id,name:f.name.trim(),email,assigned_class:f.assigned_class});
     if(r.error)return setErr(r.error.code==='23505'?'This email is already added as a teacher in another institute.':r.error.message);
-    setErr('');setF({name:'',email:'',assigned_class:'All'});reload();
+    setErr('');setF({name:'',email:'',assigned_class:''});reload();
+  };
+  const startEdit=t=>{setEd(t);setEdN(t.name);setEdC(isAllVal(t.assigned_class)?'All':(t.assigned_class||''))};
+  const saveEdit=async()=>{
+    if(!edN.trim())return alert('Teacher name is required.');
+    if(!edC)return alert('Please select at least one class, or All Classes.');
+    const r=await sb.from('teachers').update({name:edN.trim(),assigned_class:edC}).eq('id',ed.id);
+    if(r.error)return alert(r.error.message);
+    setEd(null);reload();
   };
   const lock=async t=>{const r=await sb.from('teachers').update({locked:!t.locked}).eq('id',t.id);if(r.error)alert(r.error.message);reload()};
   const del=async t=>{if(!confirm(`Are you sure you want to remove ${t.name}? The teacher will lose access permanently.`))return;const r=await sb.from('teachers').delete().eq('id',t.id);if(r.error)alert(r.error.message);reload()};
-  return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3"><div className="grid grid-cols-2 gap-x-3">
+  return <div><div className="bg-white rounded-xl p-3 shadow-sm mb-3">
     <F l="Teacher Name"><input className={inp} value={f.name} onChange={set('name')}/></F>
-    <F l="Assigned Class"><input list="tc" className={inp} value={f.assigned_class} onChange={set('assigned_class')} placeholder="Class 10 or All"/></F></div>
-    <datalist id="tc"><option>All</option>{classes.map(x=><option key={x}>{x}</option>)}</datalist>
     <F l="Teacher Email"><input className={inp} type="email" value={f.email} onChange={set('email')}/></F>
+    <div className="text-xs font-medium text-slate-600 mb-2">Assigned Classes (select one or more)</div>
+    <div className="mb-3"><ClassPills value={f.assigned_class} onChange={v=>setF({...f,assigned_class:v})} extra={extra}/></div>
     {err&&<div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm mb-3">⚠ {err}</div>}
     <button onClick={add} className={btn()}>+ Add Teacher</button>
-    <p className="text-xs text-slate-500 mt-3 bg-amber-50 rounded-lg p-2">Note: The teacher just needs to open this same link and Sign Up using this exact email. After login they will see only their assigned class.</p></div>
-    <div className="space-y-2">{d.teachers.map(t=><div key={t.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
-      <div><div className="font-semibold">{t.name}</div><div className="text-xs text-slate-500">{t.email} · Class: {t.assigned_class}{t.locked&&<b className="text-red-600"> · LOCKED</b>}</div></div>
-      <div className="flex gap-1"><button onClick={()=>lock(t)} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium ${t.locked?'bg-green-600 text-white':'bg-amber-100 text-amber-800'}`}>{t.locked?'Unlock Teacher':'Lock Teacher'}</button><button onClick={()=>del(t)} className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs">🗑 Remove Teacher</button></div></div>)}
-      {!d.teachers.length&&<p className="text-sm text-slate-500">No teachers added yet.</p>}</div></div>;
+    <p className="text-xs text-slate-500 mt-3 bg-amber-50 rounded-lg p-2">Note: The teacher just needs to open this same link, choose the Teacher tab and Sign Up using this exact email. After login they will see only their assigned classes.</p></div>
+    <div className="space-y-2">{d.teachers.map(t=><div key={t.id} className="bg-white rounded-xl p-3 shadow-sm">
+      <div className="font-semibold">{t.name}{t.locked&&<b className="text-red-600 text-xs"> · LOCKED</b>}</div>
+      <div className="text-xs text-slate-500">{t.email}</div>
+      <div className="flex flex-wrap gap-1 my-2">{(isAllVal(t.assigned_class)?['All Classes']:splitClasses(t.assigned_class)).map(c=><span key={c} className="text-xs bg-indigo-50 text-indigo-700 rounded-full px-2 py-0.5">{c}</span>)}</div>
+      <div className="flex flex-wrap gap-1"><button onClick={()=>startEdit(t)} className="px-2.5 py-1.5 rounded-lg bg-slate-100 text-xs font-medium">Edit Teacher</button>
+        <button onClick={()=>lock(t)} className={`px-2.5 py-1.5 rounded-lg text-xs font-medium ${t.locked?'bg-green-600 text-white':'bg-amber-100 text-amber-800'}`}>{t.locked?'Unlock Teacher':'Lock Teacher'}</button>
+        <button onClick={()=>del(t)} className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-xs">🗑 Remove Teacher</button></div></div>)}
+      {!d.teachers.length&&<p className="text-sm text-slate-500">No teachers added yet.</p>}</div>
+    {ed&&<Modal title="Edit Teacher" close={()=>setEd(null)}>
+      <F l="Teacher Name"><input className={inp} value={edN} onChange={e=>setEdN(e.target.value)}/></F>
+      <div className="text-xs text-slate-500 mb-3">Email: {ed.email}</div>
+      <div className="text-xs font-medium text-slate-600 mb-2">Assigned Classes</div>
+      <div className="mb-4"><ClassPills value={edC} onChange={setEdC} extra={extra}/></div>
+      <button onClick={saveEdit} className={btn()+' w-full'}>Save Changes</button></Modal>}</div>;
 }
 
 function Settings({inst}){
@@ -483,7 +549,7 @@ function Dashboard({inst,role,assigned,tname}){
 
 // Flexible class matching: "Class 10", "class 10 ", "10", "10th" all match; text-only classes (e.g. JEE/NEET) match case-insensitively
 const classKey=v=>{const t=String(v==null?'':v).trim().toLowerCase(),m=t.match(/\d+/);return m?m[0]:t.replace(/\s+/g,' ')};
-const classMatch=(assigned,course)=>{const a=String(assigned==null?'':assigned).trim().toLowerCase();return !a||a==='all'||classKey(a)===classKey(course)};
+const classMatch=(assigned,course)=>{const list=String(assigned==null?'':assigned).split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);if(!list.length)return true;return list.some(a=>a==='all'||a==='all classes'||classKey(a)===classKey(course))};
 // Accepts nested ({institute:{...}}) or flat ({institute_id, inst_name, ...}) role data; never returns null fields that crash the UI
 const normCtx=c=>{
   if(Array.isArray(c))c=c[0];
@@ -509,7 +575,7 @@ class Boundary extends React.Component{
 
 function TeacherDashboard({ctx}){
   const base=(ctx&&ctx.institute)||{},sname=base.name||'Your School',assigned=(ctx&&ctx.assigned_class)||'All',tname=(ctx&&ctx.teacher_name)||'Teacher';
-  const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],exams:[],tatt:[]}),[scan,setScan]=useState(false),[err,setErr]=useState('');
+  const [tab,setTab]=useState('home'),[raw,setD]=useState({students:[],att:[],exams:[],tatt:[]}),[cur,setCur]=useState(''),[scan,setScan]=useState(false),[err,setErr]=useState('');
   const reload=async()=>{
     try{
       const [s,a,e,t]=await Promise.all([
@@ -526,6 +592,9 @@ function TeacherDashboard({ctx}){
     }catch(x){setErr((x&&x.message)||'Could not load data')}
   };
   useEffect(()=>{reload()},[]);
+  const clsList=splitClasses(assigned),hasAll=clsList.length===0||isAllVal(assigned),classTabs=hasAll?[]:clsList,active=classTabs.includes(cur)?cur:(classTabs[0]||'');
+  const vis=hasAll?raw.students:raw.students.filter(x=>classMatch(active,x.course)),vids=new Set(vis.map(x=>x.id));
+  const d={...raw,students:vis,att:raw.att.filter(a=>vids.has(a.student_id)),exams:raw.exams.filter(e=>vids.has(e.student_id))};
   const iid=base.id||(d.students[0]&&d.students[0].institute_id)||null;
   const inst={...base,id:iid,name:sname};
   const pres=d.att.filter(a=>a.status==='present').length,pct=d.att.length?Math.round(pres*100/d.att.length):0;
@@ -537,6 +606,7 @@ function TeacherDashboard({ctx}){
       <div className="min-w-0 flex-1"><div className="font-bold text-lg truncate">👩‍🏫 {tname}</div><div className="text-xs text-slate-500 truncate">{sname} · Class: {assigned}</div></div>
       <button type="button" onClick={logout} style={{touchAction:'manipulation'}} className="relative z-50 cursor-pointer shrink-0 px-5 py-3 rounded-xl bg-red-600 active:bg-red-700 text-white text-base font-bold min-w-[110px]">Log out</button></div>
     {err&&<div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm mb-3">Some data could not be loaded: {err}</div>}
+    {classTabs.length>1&&<div className="flex gap-2 overflow-x-auto mb-3">{classTabs.map(c=><button key={c} onClick={()=>setCur(c)} className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap border-2 ${c===active?'bg-green-600 text-white border-green-600':'bg-white text-slate-700 border-slate-200'}`}>{c}</button>)}</div>}
     <div className="flex gap-1 overflow-x-auto mb-4">{tabs.map(([k,l])=><button key={k} onClick={()=>setTab(k)} className={`px-3 py-1.5 rounded-full text-sm whitespace-nowrap ${tab===k?'bg-indigo-600 text-white':'bg-white'}`}>{l}</button>)}</div>
     {tab==='home'&&<div>
       <button onClick={()=>setScan(true)} className="w-full py-6 rounded-2xl text-white text-xl font-bold bg-green-600 hover:bg-green-700 shadow mb-2">📷 Scan School Gate QR</button>
@@ -544,9 +614,9 @@ function TeacherDashboard({ctx}){
       <div className="grid grid-cols-2 gap-3 my-4">{[['My Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700']].map(([a,b,c])=><div key={a} className="bg-white rounded-xl p-4 shadow-sm"><div className="text-xs text-slate-500">{a}</div><div className={`text-2xl font-bold ${c}`}>{b}</div></div>)}</div>
       {!d.students.length&&<p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 mb-3">No students found for class “{assigned}”. The Principal must add students with the same class (for example “Class 10”, “10” or “10th”).</p>}
       <div className="flex flex-wrap gap-2"><button onClick={()=>setTab('attendance')} className={btn('green')}>Mark Class Attendance</button><button onClick={()=>setTab('exams')} className={btn()}>Enter Exam Marks</button></div></div>}
-    {tab==='attendance'&&<Attendance {...p}/>}
-    {tab==='exams'&&<Exams {...p}/>}
-    {tab==='students'&&<Students {...p} ro={true} openAdd={()=>{}}/>}
+    {tab==='attendance'&&<Attendance key={active} {...p}/>}
+    {tab==='exams'&&<Exams key={active} {...p}/>}
+    {tab==='students'&&<Students key={active} {...p} ro={true} openAdd={()=>{}}/>}
     {scan&&<GateScan close={()=>{setScan(false);reload()}}/>}
   </div>;
 }
