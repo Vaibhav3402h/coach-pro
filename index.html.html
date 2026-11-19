@@ -45,38 +45,72 @@ function Setup({reload}){
     <button onClick={go} className={btn()+' w-full'}>Start 7-Day Free Trial</button></div></div>;
 }
 
-function StudentModal({st,inst,done,close}){
-  const [f,setF]=useState(st||{name:'',course:'Class 10',batch:'Morning 7 AM',parent_name:'',parent_phone:'',fee:'',paid:0,due_date:''});
+const GENDERS=['Male','Female','Other'],CATEGORIES=['General','OBC','SC','ST','Other'];
+const fmtAadhaar=v=>String(v||'').replace(/\D/g,'').slice(0,12).replace(/(\d{4})(?=\d)/g,'$1 ');
+const maskAadhaar=v=>{const x=String(v||'').replace(/\D/g,'');return x.length===12?'XXXX XXXX '+x.slice(8):''};
+const fmtDob=v=>v?String(v).split('-').reverse().join('/'):'-';
+const gx=v=>{const t=String(v||'').trim().toLowerCase();return !t?null:(t==='male'||t==='m')?'Male':(t==='female'||t==='f')?'Female':'Other'};
+const cx=v=>{const t=String(v||'').trim().toUpperCase();return !t?null:['OBC','SC','ST'].includes(t)?t:(t==='GENERAL'||t==='GEN')?'General':'Other'};
+const dbHint=m=>/roll_no|mother_name|aadhar_no|dob|gender|category|address|teacher_update_student/i.test(m||'')?m+' — Ask the software owner to run coachpro_student_details.sql in Supabase.':m;
+
+function ExtraInfo({s}){
+  const a=[['Roll No.',s.roll_no],['Mother',s.mother_name],['DOB',s.dob?fmtDob(s.dob):''],['Gender',s.gender],['Category',s.category]].filter(x=>x[1]);
+  const m=maskAadhaar(s.aadhar_no),b=[m&&'Aadhaar '+m,s.address&&'Address: '+s.address].filter(Boolean);
+  if(!a.length&&!b.length)return null;
+  return <div className="text-xs text-slate-500 mt-0.5">{a.map(x=>x[0]+': '+x[1]).join(' · ')}{b.length>0&&<div>{b.join(' · ')}</div>}</div>;
+}
+
+function StudentModal({st,inst,done,close,teacher}){
+  const blank={name:'',course:'Class 10',batch:'Morning 7 AM',parent_name:'',parent_phone:'',fee:'',paid:0,due_date:'',roll_no:'',mother_name:'',aadhar_no:'',dob:'',gender:'',category:'',address:''};
+  const [f,setF]=useState({...blank,...Object.fromEntries(Object.entries(st||{}).map(([k,v])=>[k,v==null?'':v]))});
+  const [err,setErr]=useState(''),[busy,setBusy]=useState(false);
   const set=k=>e=>setF({...f,[k]:e.target.value});
-  const due=Math.max(0,(+f.fee||0)-(+f.paid||0)),[err,setErr]=useState('');
+  const due=Math.max(0,(+f.fee||0)-(+f.paid||0));
   const save=async()=>{
-    if(!f.name.trim()||!f.parent_phone.trim())return setErr('Student name and parent phone are required.');
+    if(!String(f.name).trim()||!String(f.parent_phone).trim())return setErr('Student name and parent phone are required.');
+    const aad=String(f.aadhar_no||'').replace(/\D/g,'');
+    if(aad&&aad.length!==12)return setErr('Aadhaar number must be exactly 12 digits.');
+    const extra={roll_no:String(f.roll_no||'').trim()||null,mother_name:String(f.mother_name||'').trim()||null,aadhar_no:aad||null,dob:f.dob||null,gender:f.gender||null,category:f.category||null,address:String(f.address||'').trim()||null};
+    setBusy(true);setErr('');
+    if(teacher){
+      const r=await sb.rpc('teacher_update_student',{p_id:st.id,p_data:{name:String(f.name).trim(),parent_name:String(f.parent_name||'').trim(),parent_phone:String(f.parent_phone).trim(),...extra}});
+      setBusy(false);if(r.error)return setErr(dbHint(r.error.message));
+      return done();
+    }
     const keys=await existingKeys(inst,st&&st.id);
-    if(keys.has(dkey(f.name,f.parent_phone)))return setErr('Duplicate entry blocked: a student named "'+f.name.trim()+'" with this parent phone already exists.');
-    setErr('');
-    const row={name:f.name,course:f.course,batch:f.batch,parent_name:f.parent_name,parent_phone:f.parent_phone,fee:+f.fee||0,paid:+f.paid||0,due_date:f.due_date||null};
-    let sid=st&&st.id,delta=row.paid-(st?st.paid:0),r;
+    if(keys.has(dkey(f.name,f.parent_phone))){setBusy(false);return setErr('Duplicate entry blocked: a student named "'+String(f.name).trim()+'" with this parent phone already exists.')}
+    const row={name:String(f.name).trim(),course:f.course,batch:f.batch,parent_name:f.parent_name,parent_phone:String(f.parent_phone).trim(),fee:+f.fee||0,paid:+f.paid||0,due_date:f.due_date||null,...extra};
+    let sid=st&&st.id,delta=row.paid-(st?(+st.paid||0):0),r;
     if(st)r=await sb.from('students').update(row).eq('id',sid);
     else{r=await sb.from('students').insert({...row,institute_id:inst.id}).select().single();sid=r.data&&r.data.id}
-    if(r.error)return alert(r.error.message);
+    if(r.error){setBusy(false);return setErr(dbHint(r.error.message))}
     if(delta>0)await sb.from('payments').insert({institute_id:inst.id,student_id:sid,amount:delta});
-    done();
+    setBusy(false);done();
   };
-  return <Modal title={st?'Edit Student':'Add Student'} close={close}>
+  return <Modal title={teacher?'Edit Student Details':(st?'Edit Student':'Add Student')} close={close}>
     <F l="Student Name"><input className={inp} value={f.name} onChange={set('name')}/></F>
-    <div className="grid grid-cols-2 gap-3">
+    {!teacher&&<div className="grid grid-cols-2 gap-3">
       <F l="Class / Course"><input list="cl" className={inp} value={f.course} onChange={set('course')}/></F>
-      <F l="Batch Timing"><input list="bl" className={inp} value={f.batch} onChange={set('batch')}/></F></div>
-    <datalist id="cl">{COURSES.map(c=><option key={c}>{c}</option>)}</datalist><datalist id="bl">{BATCHES.map(c=><option key={c}>{c}</option>)}</datalist>
+      <F l="Batch Timing"><input list="bl" className={inp} value={f.batch} onChange={set('batch')}/></F></div>}
+    {!teacher&&<div><datalist id="cl">{COURSES.map(c=><option key={c}>{c}</option>)}</datalist><datalist id="bl">{BATCHES.map(c=><option key={c}>{c}</option>)}</datalist></div>}
+    {teacher&&<div className="text-xs bg-slate-50 rounded-lg px-3 py-2 mb-3 text-slate-600">Class: <b>{f.course}</b> · Batch: <b>{f.batch}</b> · Fees can only be edited by the Principal.</div>}
     <div className="grid grid-cols-2 gap-3">
-      <F l="Parent Name"><input className={inp} value={f.parent_name} onChange={set('parent_name')}/></F>
+      <F l="Roll Number"><input className={inp} value={f.roll_no} onChange={set('roll_no')}/></F>
+      <F l="Date of Birth"><input className={inp} type="date" value={f.dob} onChange={set('dob')}/></F>
+      <F l="Father / Parent Name"><input className={inp} value={f.parent_name} onChange={set('parent_name')}/></F>
+      <F l="Mother's Name"><input className={inp} value={f.mother_name} onChange={set('mother_name')}/></F>
       <F l="Parent Phone"><input className={inp} inputMode="tel" value={f.parent_phone} onChange={set('parent_phone')}/></F>
+      <F l="Aadhaar Number"><input className={inp} inputMode="numeric" placeholder="0000 0000 0000" value={fmtAadhaar(f.aadhar_no)} onChange={e=>setF({...f,aadhar_no:e.target.value.replace(/\D/g,'').slice(0,12)})}/></F>
+      <F l="Gender"><select className={inp} value={f.gender} onChange={set('gender')}><option value="">Select</option>{GENDERS.map(g=><option key={g}>{g}</option>)}</select></F>
+      <F l="Category"><select className={inp} value={f.category} onChange={set('category')}><option value="">Select</option>{CATEGORIES.map(g=><option key={g}>{g}</option>)}</select></F></div>
+    <F l="Full Address"><input className={inp} value={f.address} onChange={set('address')}/></F>
+    {!teacher&&<div><div className="grid grid-cols-2 gap-3">
       <F l="Monthly / Course Fee (₹)"><input className={inp} type="number" value={f.fee} onChange={set('fee')}/></F>
       <F l="Paid Amount (₹)"><input className={inp} type="number" value={f.paid} onChange={set('paid')}/></F></div>
-    <div className="flex justify-between items-center bg-amber-50 rounded-lg px-3 py-2 mb-3 text-sm"><span>Pending Due</span><b className="text-amber-700">{inr(due)}</b></div>
-    <F l="Next Fee Due Date"><input className={inp} type="date" value={f.due_date||''} onChange={set('due_date')}/></F>
+      <div className="flex justify-between items-center bg-amber-50 rounded-lg px-3 py-2 mb-3 text-sm"><span>Pending Due</span><b className="text-amber-700">{inr(due)}</b></div>
+      <F l="Next Fee Due Date"><input className={inp} type="date" value={f.due_date||''} onChange={set('due_date')}/></F></div>}
     {err&&<div className="bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 py-2 text-sm mb-3">⚠ {err}</div>}
-    <button onClick={save} className={btn()+' w-full'}>Save Student</button></Modal>;
+    <button onClick={save} disabled={busy} className={btn()+' w-full'}>{busy?'Saving…':(teacher?'Save Changes':'Save Student')}</button></Modal>;
 }
 
 function Receipt({st,inst,close}){
@@ -127,7 +161,7 @@ function Students({d,inst,reload,openAdd,ro}){
   const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[view,setView]=useState('cols');
   const list=d.students.filter(s=>s.name.toLowerCase().includes(q.toLowerCase()));
   const del=async s=>{if(!confirm(`Are you sure you want to delete ${s.name}? All records will be permanently removed.`))return;const r=await sb.from('students').delete().eq('id',s.id);if(r.error)alert(r.error.message);reload()};
-  const sample=()=>dl('coachpro_students_sample.csv','Student Name,Class,Batch,Parent Name,Parent Phone,Total Fee,Paid,Due Date\nRahul Sharma,Class 10,Morning 7 AM,Suresh Sharma,9876543210,1500,500,2026-12-05\nPriya Verma,Class 12,Evening 4 PM,Anil Verma,9123456780,2000,2000,2026-12-10\n');
+  const sample=()=>dl('coachpro_students_sample.csv','Student Name,Class,Batch,Parent Name,Parent Phone,Total Fee,Paid,Due Date,roll_no,mother_name,aadhar_no,dob,gender,category,address\nRahul Sharma,Class 10,Morning 7 AM,Suresh Sharma,9876543210,1500,500,2026-12-05,12,Sunita Sharma,123412341234,2010-05-14,Male,General,"12 Gandhi Nagar, Lucknow"\nPriya Verma,Class 12,Evening 4 PM,Anil Verma,9123456780,2000,2000,2026-12-10,7,Rekha Verma,,2008-11-02,Female,OBC,"45 Station Road, Lucknow"\n');
   const dueOf=x=>Math.max(0,(+x.fee||0)-(+x.paid||0));
   const remind=x=>wa(x.parent_phone,`Dear Parent, fee of Rs.${dueOf(x)} for ${x.name} is due at ${inst.name}. Please pay at your earliest convenience.`);
   const groups=(()=>{const m={};list.forEach(x=>{const k=classKey(x.course)||'—';(m[k]=m[k]||{k,name:/^\d+$/.test(k)?'Class '+k:(String(x.course||'').trim()||'No Class'),items:[]}).items.push(x)});return Object.values(m).sort((a,b)=>{const na=/^\d+$/.test(a.k),nb=/^\d+$/.test(b.k);return na&&nb?a.k-b.k:na?-1:nb?1:a.name.localeCompare(b.name)})})();
@@ -135,11 +169,11 @@ function Students({d,inst,reload,openAdd,ro}){
     const file=e.target.files[0];e.target.value='';if(!file)return;setBusy(true);setMsg('');
     try{
       const rows=parseCSV((await file.text()).replace(/^\uFEFF/,''));
-      const h=(rows.shift()||[]).map(x=>x.trim().toLowerCase()),ix=n=>h.indexOf(n);
+      const norm=x=>String(x).trim().toLowerCase().replace(/[\s_]+/g,' '),h=(rows.shift()||[]).map(norm),ix=n=>h.indexOf(norm(n));
       if(ix('student name')<0||ix('parent phone')<0){setMsg('error:The file must have "Student Name" and "Parent Phone" columns. Download the sample CSV to see the format.');setBusy(false);return}
       const g=(r,n)=>ix(n)<0?'':(r[ix(n)]||'').trim();
       const keys=await existingKeys(inst),add=[];let dup=0,bad=0;
-      rows.forEach(r=>{const name=g(r,'student name'),pp=g(r,'parent phone');if(!name||!pp){bad++;return}const k=dkey(name,pp);if(keys.has(k)){dup++;return}keys.add(k);add.push({institute_id:inst.id,name,course:g(r,'class')||null,batch:g(r,'batch')||null,parent_name:g(r,'parent name')||null,parent_phone:pp,fee:+g(r,'total fee')||0,paid:+g(r,'paid')||0,due_date:isoDate(g(r,'due date'))})});
+      rows.forEach(r=>{const name=g(r,'student name'),pp=g(r,'parent phone');if(!name||!pp){bad++;return}const k=dkey(name,pp);if(keys.has(k)){dup++;return}keys.add(k);add.push({institute_id:inst.id,name,course:g(r,'class')||null,batch:g(r,'batch')||null,parent_name:g(r,'parent name')||null,parent_phone:pp,fee:+g(r,'total fee')||0,paid:+g(r,'paid')||0,due_date:isoDate(g(r,'due date')),roll_no:g(r,'roll_no')||null,mother_name:g(r,'mother_name')||null,aadhar_no:(g(r,'aadhar_no').replace(/\D/g,'').length===12?g(r,'aadhar_no').replace(/\D/g,''):null),dob:isoDate(g(r,'dob')),gender:gx(g(r,'gender')),category:cx(g(r,'category')),address:g(r,'address')||null})});
       let ok=0;
       for(let i=0;i<add.length;i+=500){
         const r=await sb.from('students').insert(add.slice(i,i+500)).select('id,paid');
@@ -163,7 +197,7 @@ function Students({d,inst,reload,openAdd,ro}){
     <div className="flex gap-3 overflow-x-auto pb-3 items-start">{groups.map(g=>{const pend=g.items.reduce((a,x)=>a+dueOf(x),0);return <div key={g.k} className="w-[290px] min-w-[290px] shrink-0 bg-slate-50 rounded-xl p-2 border border-slate-200">
       <div className="bg-indigo-600 text-white rounded-lg px-3 py-2 mb-2"><div className="flex justify-between items-center gap-2"><b>{g.name}</b><span className="bg-white text-indigo-700 text-xs font-bold rounded-full px-2 py-0.5">{g.items.length} students</span></div><div className="text-xs mt-1 text-indigo-100">Pending fees: <b className="text-white">{inr(pend)}</b></div></div>
       <div className="space-y-2">{g.items.map(x=><div key={x.id} className="bg-white rounded-lg p-2 shadow-sm">
-        <div className="font-semibold text-sm">{x.name}</div><div className="text-xs text-slate-500">{x.batch} · {x.parent_name} {x.parent_phone}</div>
+        <div className="font-semibold text-sm">{x.name}</div><div className="text-xs text-slate-500">{x.batch} · {x.parent_name} {x.parent_phone}</div><ExtraInfo s={x}/>
         <div className="text-xs mt-1">Fee {inr(x.fee)} · Paid {inr(x.paid)} · Due <b className="text-amber-700">{inr(dueOf(x))}</b></div>
         <div className="flex flex-wrap gap-1 mt-2 items-center text-xs"><button onClick={()=>setEd(x)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button>
           {dueOf(x)>0?<WAB href={remind(x)}>WhatsApp Reminder</WAB>:<span className="px-1 text-green-700">Fees clear ✓</span>}
@@ -172,12 +206,13 @@ function Students({d,inst,reload,openAdd,ro}){
       {!groups.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div>
     ):(
     <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex flex-wrap justify-between gap-2">
-      <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{s.course} · {s.batch} · {s.parent_name} {s.parent_phone}</div>
+      <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{s.course} · {s.batch} · {s.parent_name} {s.parent_phone}</div><ExtraInfo s={s}/>
         {!ro&&<div className="text-xs mt-1">Fee {inr(s.fee)} · Paid {inr(s.paid)} · <b className="text-amber-700">Due {inr(s.fee-s.paid)}</b></div>}</div>
+      {ro&&<div className="flex gap-1 items-start text-xs"><button onClick={()=>setEd(s)} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Edit</button></div>}
       {!ro&&<div className="flex gap-1 items-start text-xs"><button onClick={()=>setRc(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Receipt</button><button onClick={()=>setEd(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button><button onClick={()=>del(s)} title="Delete" className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white">🗑</button></div>}</div>)}
       {!list.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div>
     )}
-    {ed&&<StudentModal st={ed} inst={inst} close={()=>setEd(null)} done={()=>{setEd(null);reload()}}/>}
+    {ed&&<StudentModal teacher={!!ro} st={ed} inst={inst} close={()=>setEd(null)} done={()=>{setEd(null);reload()}}/>}
     {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}</div>;
 }
 
@@ -321,7 +356,7 @@ function Exams({d,inst,reload}){
   };
   const card=r=>{
         const html=`<div style="border:3px double #333;padding:18px"><div style="text-align:center;font-size:24px;font-weight:bold">${esc(inst.name)}</div><div style="text-align:center;font-size:16px;margin:4px 0 12px">REPORT CARD — ${esc(ex)}</div>
-<table style="width:100%;font-size:14px;margin-bottom:12px"><tr><td><b>Student:</b> ${esc(r.name)}</td><td><b>Class:</b> ${esc(cls)}</td></tr><tr><td><b>Parent:</b> ${esc(r.parent_name)}</td><td><b>Date:</b> ${new Date().toLocaleDateString('en-IN')}</td></tr></table>
+<table style="width:100%;font-size:14px;margin-bottom:12px"><tr><td><b>Student:</b> ${esc(r.name)}</td><td><b>Class:</b> ${esc(cls)}</td></tr><tr><td><b>Roll No.:</b> ${esc(r.roll_no||'-')}</td><td><b>Date of Birth:</b> ${r.dob?fmtDob(r.dob):'-'}</td></tr><tr><td><b>Father's Name:</b> ${esc(r.parent_name||'-')}</td><td><b>Mother's Name:</b> ${esc(r.mother_name||'-')}</td></tr><tr><td colspan="2"><b>Date:</b> ${new Date().toLocaleDateString('en-IN')}</td></tr></table>
 <table style="border-collapse:collapse;width:100%"><tr style="background:#e5e7eb;font-weight:bold"><td style="${TD}">Subject</td><td style="${TD};text-align:center">Max Marks</td><td style="${TD};text-align:center">Marks Obtained</td></tr>${subs.map(u=>{const v=val(r.id,u.n);return`<tr><td style="${TD}">${esc(u.n)}</td><td style="${TD};text-align:center">${u.m}</td><td style="${TD};text-align:center">${v===''?'—':v}</td></tr>`}).join('')}<tr style="font-weight:bold;background:#f3f4f6"><td style="${TD}">Total</td><td style="${TD};text-align:center">${r.tm}</td><td style="${TD};text-align:center">${r.to}</td></tr></table>
 <table style="width:100%;font-size:15px;margin:14px 0"><tr><td><b>Percentage:</b> ${r.pct==null?'-':r.pct.toFixed(1)+'%'}</td><td><b>Grade:</b> ${r.grade}</td><td><b>Rank:</b> ${r.any?ord(r.rank)+' of '+ranked.length:'-'}</td><td><b>Result:</b> ${!r.any?'-':r.grade==='Fail'?'Fail':'Pass'}</td></tr></table>
 <div style="display:flex;justify-content:space-between;margin-top:56px;font-size:13px"><div style="border-top:1px solid #000;padding-top:4px;width:28%;text-align:center">Class Teacher</div><div style="border-top:1px solid #000;padding-top:4px;width:28%;text-align:center">Parent's Signature</div><div style="border-top:1px solid #000;padding-top:4px;width:28%;text-align:center">Principal Signature</div></div></div>`;
