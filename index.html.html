@@ -61,7 +61,7 @@ function ExtraInfo({s}){
 }
 
 function StudentModal({st,inst,done,close,teacher}){
-  const blank={name:'',course:'Class 10',batch:'Morning 7 AM',parent_name:'',parent_phone:'',fee:'',paid:0,due_date:'',roll_no:'',mother_name:'',aadhar_no:'',dob:'',gender:'',category:'',address:''};
+  const blank={name:'',course:'Class 10',batch:'',parent_name:'',parent_phone:'',fee:'',paid:0,due_date:'',roll_no:'',mother_name:'',aadhar_no:'',dob:'',gender:'',category:'',address:''};
   const [f,setF]=useState({...blank,...Object.fromEntries(Object.entries(st||{}).map(([k,v])=>[k,v==null?'':v]))});
   const [err,setErr]=useState(''),[busy,setBusy]=useState(false);
   const set=k=>e=>setF({...f,[k]:e.target.value});
@@ -91,7 +91,7 @@ function StudentModal({st,inst,done,close,teacher}){
     <F l="Student Name"><input className={inp} value={f.name} onChange={set('name')}/></F>
     {!teacher&&<div className="grid grid-cols-2 gap-3">
       <F l="Class / Course"><input list="cl" className={inp} value={f.course} onChange={set('course')}/></F>
-      <F l="Batch Timing"><input list="bl" className={inp} value={f.batch} onChange={set('batch')}/></F></div>}
+      <F l="Batch Timing (optional)"><input list="bl" className={inp} value={f.batch} onChange={set('batch')}/></F></div>}
     {!teacher&&<div><datalist id="cl">{COURSES.map(c=><option key={c}>{c}</option>)}</datalist><datalist id="bl">{BATCHES.map(c=><option key={c}>{c}</option>)}</datalist></div>}
     {teacher&&<div className="text-xs bg-slate-50 rounded-lg px-3 py-2 mb-3 text-slate-600">Class: <b>{f.course}</b> · Batch: <b>{f.batch}</b> · Fees can only be edited by the Principal.</div>}
     <div className="grid grid-cols-2 gap-3">
@@ -158,10 +158,10 @@ function Queue({items,label,close}){
 }
 
 function Students({d,inst,reload,openAdd,ro}){
-  const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[view,setView]=useState('cols');
+  const [q,setQ]=useState(''),[ed,setEd]=useState(null),[rc,setRc]=useState(null),[msg,setMsg]=useState(''),[busy,setBusy]=useState(false),[view,setView]=useState('cols'),[promo,setPromo]=useState(false);
   const list=d.students.filter(s=>s.name.toLowerCase().includes(q.toLowerCase()));
   const del=async s=>{if(!confirm(`Are you sure you want to delete ${s.name}? All records will be permanently removed.`))return;const r=await sb.from('students').delete().eq('id',s.id);if(r.error)alert(r.error.message);reload()};
-  const sample=()=>dl('coachpro_students_sample.csv','Student Name,Class,Batch,Parent Name,Parent Phone,Total Fee,Paid,Due Date,roll_no,mother_name,aadhar_no,dob,gender,category,address\nRahul Sharma,Class 10,Morning 7 AM,Suresh Sharma,9876543210,1500,500,2026-12-05,12,Sunita Sharma,123412341234,2010-05-14,Male,General,"12 Gandhi Nagar, Lucknow"\nPriya Verma,Class 12,Evening 4 PM,Anil Verma,9123456780,2000,2000,2026-12-10,7,Rekha Verma,,2008-11-02,Female,OBC,"45 Station Road, Lucknow"\n');
+  const sample=()=>dl('coachpro_students_sample.csv','Student Name,Class,Batch,Parent Name,Parent Phone,Total Fee,Paid,Due Date,roll_no,mother_name,aadhar_no,dob,gender,category,address\nRahul Sharma,Class 10,,Suresh Sharma,9876543210,1500,500,2026-12-05,12,Sunita Sharma,123412341234,2010-05-14,Male,General,"12 Gandhi Nagar, Lucknow"\nPriya Verma,Class 12,,Anil Verma,9123456780,2000,2000,2026-12-10,7,Rekha Verma,,2008-11-02,Female,OBC,"45 Station Road, Lucknow"\n');
   const dueOf=x=>Math.max(0,(+x.fee||0)-(+x.paid||0));
   const remind=x=>wa(x.parent_phone,`Dear Parent, fee of Rs.${dueOf(x)} for ${x.name} is due at ${inst.name}. Please pay at your earliest convenience.`);
   const groups=(()=>{const m={};list.forEach(x=>{const k=classKey(x.course)||'—';(m[k]=m[k]||{k,name:/^\d+$/.test(k)?'Class '+k:(String(x.course||'').trim()||'No Class'),items:[]}).items.push(x)});return Object.values(m).sort((a,b)=>{const na=/^\d+$/.test(a.k),nb=/^\d+$/.test(b.k);return na&&nb?a.k-b.k:na?-1:nb?1:a.name.localeCompare(b.name)})})();
@@ -189,6 +189,7 @@ function Students({d,inst,reload,openAdd,ro}){
   return <div>
     <div className="flex flex-wrap gap-2 mb-3"><input className={inp+' !mt-0 flex-1 min-w-[140px]'} placeholder="Search students" value={q} onChange={e=>setQ(e.target.value)}/>
       {!ro&&<button onClick={openAdd} className={btn()+' whitespace-nowrap'}>+ Add Student</button>}
+      {!ro&&<button onClick={()=>setPromo(true)} className={btn('amber')+' whitespace-nowrap'}>Promote Class</button>}
       {!ro&&<label className={btn('violet')+' whitespace-nowrap cursor-pointer'}>{busy?'Importing…':'Import CSV'}<input type="file" accept=".csv,text/csv" className="hidden" onChange={imp} disabled={busy}/></label>}
       {!ro&&<button onClick={sample} className="px-3 py-2 rounded-lg text-sm bg-white border">Download Sample CSV</button>}</div>
     {msg&&<div className={`rounded-lg px-3 py-2 text-sm mb-3 ${msg.startsWith('ok:')?'bg-green-50 text-green-700':'bg-red-50 text-red-700'}`}>{msg.replace(/^(ok|error):/,'')}</div>}
@@ -208,12 +209,13 @@ function Students({d,inst,reload,openAdd,ro}){
     <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex flex-wrap justify-between gap-2">
       <div><div className="font-semibold">{s.name}</div><div className="text-xs text-slate-500">{s.course} · {s.batch} · {s.parent_name} {s.parent_phone}</div><ExtraInfo s={s}/>
         {!ro&&<div className="text-xs mt-1">Fee {inr(s.fee)} · Paid {inr(s.paid)} · <b className="text-amber-700">Due {inr(s.fee-s.paid)}</b></div>}</div>
-      {ro&&<div className="flex gap-1 items-start text-xs"><button onClick={()=>setEd(s)} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Edit</button></div>}
+      {ro&&<div className="flex gap-1 items-start text-xs"><button onClick={()=>setEd(s)} className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Edit Details</button></div>}
       {!ro&&<div className="flex gap-1 items-start text-xs"><button onClick={()=>setRc(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Receipt</button><button onClick={()=>setEd(s)} className="px-2 py-1.5 rounded-lg bg-slate-100">Edit</button><button onClick={()=>del(s)} title="Delete" className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white">🗑</button></div>}</div>)}
       {!list.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div>
     )}
     {ed&&<StudentModal teacher={!!ro} st={ed} inst={inst} close={()=>setEd(null)} done={()=>{setEd(null);reload()}}/>}
-    {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}</div>;
+    {rc&&<Receipt st={rc} inst={inst} close={()=>setRc(null)}/>}
+    {promo&&<PromoteModal d={d} close={()=>setPromo(false)} done={()=>{setPromo(false);reload()}}/>}</div>;
 }
 
 function Fees({d,inst}){
@@ -235,14 +237,51 @@ function Fees({d,inst}){
     {qu&&<Queue items={dueList.map(x=>({name:x.name,phone:x.parent_phone,text:text(x)}))} label="Send" close={()=>setQu(false)}/>}</div>;
 }
 
+const byRoll=(a,b)=>{const x=parseInt(a.roll_no,10),y=parseInt(b.roll_no,10);if(!isNaN(x)&&!isNaN(y)&&x!==y)return x-y;if(!isNaN(x)&&isNaN(y))return -1;if(isNaN(x)&&!isNaN(y))return 1;return String(a.name).localeCompare(String(b.name))};
+const monthLabel=ym=>{const [y,m]=String(ym||'').split('-');return y&&m?new Date(+y,+m-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'}):''};
+const groupByClass=list=>{const m={};list.forEach(x=>{const k=classKey(x.course)||'—';(m[k]=m[k]||{k,name:/^\d+$/.test(k)?'Class '+k:(String(x.course||'').trim()||'No Class'),items:[]}).items.push(x)});return Object.values(m).sort((a,b)=>{const na=/^\d+$/.test(a.k),nb=/^\d+$/.test(b.k);return na&&nb?a.k-b.k:na?-1:nb?1:a.name.localeCompare(b.name)})};
+const punchTime=x=>{
+  if(x.punch_time){const m=String(x.punch_time).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);if(m){let h=+m[1];const ap=h>=12?'PM':'AM';h=h%12||12;return String(h).padStart(2,'0')+':'+m[2]+(m[3]?':'+m[3]:'')+' '+ap}return String(x.punch_time)}
+  return x.punch_at?new Date(x.punch_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).toUpperCase():'—';
+};
+async function fetchMonthAtt(ym){
+  const [y,m]=ym.split('-').map(Number),last=new Date(y,m,0).getDate(),start=ym+'-01',end=ym+'-'+String(last).padStart(2,'0');
+  let all=[],from=0;
+  for(;;){
+    const r=await sb.from('attendance').select('student_id,att_date,status').gte('att_date',start).lte('att_date',end).order('att_date').order('student_id').range(from,from+999);
+    if(r.error)throw r.error;
+    all=all.concat(r.data||[]);
+    if(!r.data||r.data.length<1000)break;
+    from+=1000;
+  }
+  return all;
+}
+function monthlyRows(students,att,withClass){
+  const by={};att.forEach(a=>{(by[a.student_id]=by[a.student_id]||{})[+String(a.att_date).slice(8,10)]=a.status});
+  const days=Array.from({length:31},(_,i)=>i+1);
+  const head=[...(withClass?['Class']:[]),'Roll No','Student Name','Father Name','Total Present Days','Total Absent Days','Attendance %',...days];
+  return [head,...students.map(s=>{const m=by[s.id]||{};let p=0,a=0;Object.values(m).forEach(v=>v==='present'?p++:a++);const t=p+a;
+    return [...(withClass?[s.course||'']:[]),s.roll_no||'',s.name,s.parent_name||'',p,a,t?(p*100/t).toFixed(1)+'%':'-',...days.map(dd=>m[dd]?(m[dd]==='present'?'P':'A'):'')]})];
+}
+const toCSV=rows=>'\uFEFF'+rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+async function exportMonthly(students,ym,withClass,fname){
+  if(!ym)return alert('Please select a month and year first.');
+  try{const att=await fetchMonthAtt(ym);dl(fname.replace(/[^\w-]+/g,'_')+'_'+ym+'.csv',toCSV(monthlyRows(students,att,withClass)))}
+  catch(e){alert('Could not download the register: '+((e&&e.message)||e))}
+}
+
+function MonthBox({ym,setYm,children}){
+  return <div className="bg-white rounded-xl p-3 shadow-sm"><div className="text-sm font-semibold mb-2">Monthly Attendance Register (Excel / CSV)</div>
+    <div className="flex flex-wrap gap-2 items-end"><label className="text-xs font-medium text-slate-600">Month / Year<input type="month" className={inp} value={ym} onChange={e=>setYm(e.target.value)}/></label>{children}</div>
+    <p className="text-xs text-slate-500 mt-2">Selected: <b>{monthLabel(ym)||'—'}</b>. Columns: Roll No, Student Name, Father Name, Total Present, Total Absent, Attendance %, and days 1 to 31 (P = Present, A = Absent).</p></div>;
+}
+
 function Attendance({d,inst,reload}){
-  const batches=[...new Set([...BATCHES,...d.students.map(x=>x.batch).filter(Boolean)])];
-  const [b,setB]=useState(batches[0]),[loc,setLoc]=useState({}),[ab,setAb]=useState(null),[qu,setQu]=useState(false),[sv,setSv]=useState(false);
+  const [loc,setLoc]=useState({}),[ab,setAb]=useState(null),[qu,setQu]=useState(false),[sv,setSv]=useState(false),[ym,setYm]=useState(today().slice(0,7)),[xb,setXb]=useState(false);
   const map={};d.att.forEach(a=>map[a.student_id]=a.status);
-  const list=d.students.filter(x=>x.batch===b);
-  const st=s=>loc[s.id]||map[s.id];
+  const list=[...d.students].sort(byRoll),st=s=>loc[s.id]||map[s.id];
   const msg=s=>`Alert from ${inst.name}: Your ward ${s.name} is ABSENT from class today.`;
-  const dirty=Object.keys(loc).length>0;
+  const cnt=v=>list.filter(s=>st(s)===v).length,dirty=Object.keys(loc).length>0;
   const save=async()=>{
     const rows=list.filter(s=>st(s)).map(s=>({institute_id:inst.id,student_id:s.id,att_date:today(),status:st(s)}));
     if(!rows.length)return alert('Mark attendance for at least one student first.');
@@ -252,21 +291,72 @@ function Attendance({d,inst,reload}){
     setLoc({});await reload();
     if(abs.length)setAb(abs);else alert('Attendance saved. No students are absent today.');
   };
-  return <div><div className="flex gap-2 mb-3"><select className={inp+' !mt-0'} value={b} onChange={e=>{setB(e.target.value);setLoc({})}}>{batches.map(x=><option key={x}>{x}</option>)}</select>
-    <button onClick={()=>{const m={};list.forEach(s=>m[s.id]='present');setLoc(m)}} className="px-3 py-2 rounded-lg text-sm bg-white border whitespace-nowrap">All Present</button></div>
+  const dn=async()=>{setXb(true);await exportMonthly(list,ym,false,'attendance_'+((list[0]&&list[0].course)||'class'));setXb(false)};
+  return <div>
+    <div className="flex flex-wrap gap-2 items-center mb-3"><div className="text-sm text-slate-600 flex-1">Today: <b className="text-green-700">{cnt('present')} Present</b> · <b className="text-red-600">{cnt('absent')} Absent</b> · {list.length-cnt('present')-cnt('absent')} not marked</div>
+      <button onClick={()=>{const m={};list.forEach(s=>m[s.id]='present');setLoc(m)}} className="px-3 py-2 rounded-lg text-sm bg-white border whitespace-nowrap">All Present</button></div>
     <div className="space-y-2">{list.map(s=><div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex justify-between items-center gap-2">
-      <div className="font-semibold">{s.name}</div>
-      <div className="flex gap-1 items-center">
+      <div className="font-semibold min-w-0 truncate">{s.roll_no?s.roll_no+'. ':''}{s.name}</div>
+      <div className="flex gap-1 items-center shrink-0">
         <button onClick={()=>setLoc({...loc,[s.id]:'present'})} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${st(s)==='present'?'bg-green-600 text-white':'bg-green-50 text-green-700'}`}>Present</button>
         <button onClick={()=>setLoc({...loc,[s.id]:'absent'})} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${st(s)==='absent'?'bg-red-600 text-white':'bg-red-50 text-red-700'}`}>Absent</button>
         {st(s)==='absent'&&<WAB href={wa(s.parent_phone,msg(s))}>Alert Parent</WAB>}</div></div>)}
-      {!list.length&&<p className="text-sm text-slate-500">No students in this batch.</p>}</div>
+      {!list.length&&<p className="text-sm text-slate-500">No students found for this class.</p>}</div>
     {list.length>0&&<button onClick={save} disabled={sv} className={btn('green')+' w-full mt-3 py-3'}>{sv?'Saving…':'Save Attendance'}{dirty?' (unsaved changes)':''}</button>}
+    <div className="mt-4"><MonthBox ym={ym} setYm={setYm}><button onClick={dn} disabled={xb||!list.length} className={btn()+' disabled:opacity-50'}>{xb?'Preparing…':'Download Class Monthly Attendance (Excel/CSV)'}</button></MonthBox></div>
     {ab&&!qu&&<Modal title="Attendance Saved" close={()=>setAb(null)}><div className="text-center"><div className="text-4xl">📢</div>
       <p className="font-bold text-lg my-3">{ab.length} Students Absent Today — Send WhatsApp Alerts to Parents</p>
       <button onClick={()=>setQu(true)} className="w-full py-3 rounded-xl text-white font-bold bg-green-600 hover:bg-green-700">Start Bulk Absent Alerts</button>
       <button onClick={()=>setAb(null)} className="mt-3 text-sm text-slate-500">Not now</button></div></Modal>}
     {ab&&qu&&<Queue items={ab.map(s=>({name:s.name,phone:s.parent_phone,text:msg(s)}))} label="Send Absent Alert" close={()=>{setQu(false);setAb(null)}}/>}</div>;
+}
+
+function AttendanceBoard({d,inst,reload}){
+  const [ym,setYm]=useState(today().slice(0,7)),[xb,setXb]=useState(false);
+  useEffect(()=>{const id=setInterval(reload,45000);return()=>clearInterval(id)},[]);
+  const map={};d.att.forEach(a=>map[a.student_id]=a.status);
+  const groups=groupByClass(d.students).map(g=>({...g,items:[...g.items].sort(byRoll)}));
+  const P=d.students.filter(s=>map[s.id]==='present').length,A=d.students.filter(s=>map[s.id]==='absent').length;
+  const run=async(list,withClass,name)=>{setXb(true);await exportMonthly(list,ym,withClass,name);setXb(false)};
+  const msg=s=>`Alert from ${inst.name}: Your ward ${s.name} is ABSENT from class today.`;
+  return <div>
+    <div className="flex flex-wrap items-center gap-2 mb-3"><div className="flex-1"><h3 className="font-bold">Live Attendance — Today ({today().split('-').reverse().join('/')})</h3><div className="text-xs text-slate-500">Updated automatically from what teachers save.</div></div>
+      <button onClick={reload} className="px-3 py-2 rounded-lg text-sm bg-white border">Refresh</button></div>
+    <div className="grid grid-cols-3 gap-2 mb-3">{[['Present',P,'text-green-700'],['Absent',A,'text-red-600'],['Not marked',d.students.length-P-A,'text-slate-600']].map(([a,b,c])=><div key={a} className="bg-white rounded-xl p-3 shadow-sm text-center"><div className="text-xs text-slate-500">{a}</div><div className={`text-2xl font-bold ${c}`}>{b}</div></div>)}</div>
+    <div className="mb-4"><MonthBox ym={ym} setYm={setYm}><button onClick={()=>run(groups.flatMap(g=>g.items),true,'attendance_all_classes')} disabled={xb||!d.students.length} className={btn()+' disabled:opacity-50'}>{xb?'Preparing…':'Download All Classes Monthly Attendance (Excel/CSV)'}</button></MonthBox></div>
+    <div className="grid gap-3 sm:grid-cols-2">{groups.map(g=>{const p=g.items.filter(s=>map[s.id]==='present').length,a=g.items.filter(s=>map[s.id]==='absent').length;
+      return <div key={g.k} className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-200">
+        <div className="bg-indigo-600 text-white px-3 py-2"><div className="flex justify-between items-center"><b>{g.name}</b><span className="text-xs bg-white text-indigo-700 rounded-full px-2 py-0.5 font-bold">{g.items.length} students</span></div>
+          <div className="text-xs mt-1">Present <b>{p}</b> · Absent <b>{a}</b> · Not marked <b>{g.items.length-p-a}</b></div></div>
+        <div className="max-h-64 overflow-y-auto divide-y">{g.items.map(s=><div key={s.id} className="flex justify-between items-center gap-2 px-3 py-1.5 text-sm"><span className="truncate">{s.roll_no?s.roll_no+'. ':''}{s.name}</span>
+          <span className="flex items-center gap-1 shrink-0"><span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${map[s.id]==='present'?'bg-green-100 text-green-700':map[s.id]==='absent'?'bg-red-100 text-red-700':'bg-slate-100 text-slate-500'}`}>{map[s.id]==='present'?'Present':map[s.id]==='absent'?'Absent':'Not marked'}</span>{map[s.id]==='absent'&&<WAB href={wa(s.parent_phone,msg(s))}>Alert</WAB>}</span></div>)}</div>
+        <div className="p-2 border-t"><button onClick={()=>run(g.items,false,'attendance_'+g.name)} disabled={xb} className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-slate-100 disabled:opacity-50">Download {g.name} Monthly Attendance (CSV)</button></div></div>})}
+      {!groups.length&&<p className="text-sm text-slate-500">No students yet.</p>}</div></div>;
+}
+
+function PromoteModal({d,close,done}){
+  const next=g=>/^\d+$/.test(g.k)?(+g.k>=12?'Passed Out':'Class '+(+g.k+1)):g.name;
+  const [rows,setRows]=useState(groupByClass(d.students).map(g=>({k:g.k,name:g.name,ids:g.items.map(x=>x.id),to:next(g),on:/^\d+$/.test(g.k)&&+g.k<12}))),[busy,setBusy]=useState(false);
+  const upd=(k,p)=>setRows(rows.map(r=>r.k===k?{...r,...p}:r));
+  const run=async()=>{
+    const sel=rows.filter(r=>r.on&&r.to.trim()&&r.to.trim()!==r.name),total=sel.reduce((a,r)=>a+r.ids.length,0);
+    if(!sel.length)return alert('Select at least one class and enter the new class name.');
+    if(!confirm(`Move ${total} students to their next class?\n\n${sel.map(r=>r.name+' → '+r.to.trim()).join('\n')}\n\nThis changes every selected student's class. Export your records first if needed.`))return;
+    setBusy(true);
+    for(const r of sel)for(let i=0;i<r.ids.length;i+=100){
+      const x=await sb.from('students').update({course:r.to.trim()}).in('id',r.ids.slice(i,i+100));
+      if(x.error){setBusy(false);alert('Stopped while moving '+r.name+': '+x.error.message+'\nClasses before this one were already moved.');return}
+    }
+    setBusy(false);alert('Done. '+total+' students were promoted.');done();
+  };
+  return <Modal title="Promote Class (End of Session)" close={close}>
+    <p className="text-xs text-slate-600 mb-3">Tick the classes to move and check the new class name. All students of a ticked class move together. Class 12 is not ticked by default (type a name like "Passed Out" and tick it to move them).</p>
+    <div className="space-y-2 mb-4">{rows.map(r=><div key={r.k} className="flex items-center gap-2 bg-slate-50 rounded-lg p-2">
+      <input type="checkbox" checked={r.on} onChange={e=>upd(r.k,{on:e.target.checked})} className="w-5 h-5"/>
+      <div className="text-sm w-28 shrink-0"><b>{r.name}</b><div className="text-xs text-slate-500">{r.ids.length} students</div></div><span>→</span>
+      <input className="flex-1 min-w-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm" value={r.to} onChange={e=>upd(r.k,{to:e.target.value})}/></div>)}
+      {!rows.length&&<p className="text-sm text-slate-500">No students to promote.</p>}</div>
+    <button onClick={run} disabled={busy} className={btn()+' w-full'}>{busy?'Promoting…':'Promote Selected Classes'}</button></Modal>;
 }
 
 function Inquiries({d,inst,reload}){
@@ -299,13 +389,12 @@ function Locked({inst,teacher}){
   return <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100"><div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl text-center">
     <div className="text-5xl">🔒</div>
     <h2 className="text-xl font-bold mt-2">Subscription Expired or Locked</h2>
-    <p className="text-sm text-slate-500 mt-1">Access for <b>{inst.name}</b> is paused. Choose a plan and pay to unlock for 30 days.</p>
-    <div className="grid grid-cols-2 gap-2 my-4">{[[999,'Monthly','per month'],[5500,'Yearly','Save ₹6,488']].map(([a,l,t])=><button key={a} onClick={()=>setPlan(a)} className={`rounded-xl border-2 p-3 ${plan===a?'border-indigo-600 bg-indigo-50':'border-slate-200'}`}><div className="text-xl font-bold">₹{a.toLocaleString('en-IN')}</div><div className="text-sm font-semibold">{l}</div><div className={`text-xs ${a===5500?'text-green-700 font-semibold':'text-slate-500'}`}>{t}</div></button>)}</div>
+    <p className="text-sm text-slate-500 mt-1">Access for <b>{inst.name}</b> is paused. Choose a plan and pay to unlock.</p>
+    <div className="grid grid-cols-2 gap-2 my-4">{[[999,'₹999','per Month'],[9999,'₹9,999','per Year']].map(([a,l,t])=><button key={a} onClick={()=>setPlan(a)} className={`rounded-xl border-2 p-3 ${plan===a?'border-indigo-600 bg-indigo-50':'border-slate-200'}`}><div className="text-xl font-bold">{l}</div><div className="text-sm text-slate-600">{t}</div></button>)}</div>
     <div className="bg-indigo-50 rounded-xl p-4 mb-4"><div className="text-xs text-slate-500">GPay UPI ID</div><div className="font-mono font-bold text-indigo-700 break-all">{MY_UPI_ID}</div>
-      <button onClick={copy} className="mt-2 text-sm px-3 py-1 rounded-lg bg-white border">{c?'Copied ✓':'Copy UPI'}</button></div>
-    <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${plan}&cu=INR`} className={btn()+' block mb-2'}>Pay ₹{plan.toLocaleString('en-IN')} via GPay / UPI</a>
-    <a href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi, I have paid Rs.'+plan+' for CoachPro. Institute: '+inst.name+' ('+inst.email+'). Screenshot attached.')}`} target="_blank" rel="noreferrer" className={btn('green')+' block mb-2'}>Send Payment Screenshot on WhatsApp</a>
-    <button onClick={logout} className="text-sm text-slate-500 mt-2">Log out</button></div></div>;
+      <button onClick={copy} className="mt-2 text-sm px-3 py-1 rounded-lg bg-white border">{c?'Copied ✓':'Copy UPI ID'}</button></div>
+    <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${plan}&cu=INR`} className={btn()+' block mb-2'}>Pay Now via GPay / UPI</a>
+    <button onClick={logout} className="text-sm text-slate-500 mt-2 px-4 py-2">Log out</button></div></div>;
 }
 
 function SuperAdmin(){
@@ -316,6 +405,7 @@ function SuperAdmin(){
   const active=i=>!i.locked&&exp(i)>new Date();
   const mrr=rows.filter(i=>i.paid_until&&new Date(i.paid_until)>new Date()&&!i.locked).reduce((a,i)=>a+(i.plan||999),0);
   const act=async(fn,a)=>{const r=await sb.rpc(fn,a);if(r.error)alert(r.error.message);load()};
+  const delSchool=async i=>{const t=prompt(`This will PERMANENTLY delete "${i.name}" and ALL its students, teachers, fees, attendance and marks.\n\nType DELETE to confirm.`);if(t!=='DELETE')return;await act('admin_delete_institute',{iid:i.id})};
   return <div className="max-w-5xl mx-auto p-4">
     <div className="flex justify-between items-center mb-4"><h1 className="text-xl font-bold">👑 Super Admin</h1><button onClick={logout} className="text-sm text-slate-500">Log out</button></div>
     <div className="grid grid-cols-3 gap-3 mb-4">
@@ -325,8 +415,9 @@ function SuperAdmin(){
       <div className="flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-1 rounded-full ${active(i)?'bg-green-100 text-green-700':'bg-red-100 text-red-700'}`}>{active(i)?'Active':'Locked'}</span>
         <button onClick={()=>act('admin_set_plan',{p_id:i.id,p_plan:(i.plan||999)===999?499:999})} className="px-3 py-2 rounded-lg text-sm bg-slate-100">Plan ₹{i.plan||999}</button>
         <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:30})} className={btn()}>+30 Days (Monthly)</button>
-        <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:365})} className={btn('violet')}>+1 Year (Yearly ₹5,500)</button>
-        <button onClick={()=>act('admin_set_lock',{p_id:i.id,p_lock:!i.locked})} className={btn(i.locked?'green':'red')}>{i.locked?'Unlock School':'Lock School'}</button></div></div>)}
+        <button onClick={()=>act('admin_extend_days',{iid:i.id,days_count:365})} className={btn('violet')}>+1 Year (Yearly ₹9,999)</button>
+        <button onClick={()=>act('admin_set_lock',{p_id:i.id,p_lock:!i.locked})} className={btn(i.locked?'green':'red')}>{i.locked?'Unlock School':'Lock School'}</button>
+        <button onClick={()=>delSchool(i)} className="px-3 py-2 rounded-lg text-sm font-medium text-white bg-red-700 hover:bg-red-800">🗑 Delete School</button></div></div>)}
       {!rows.length&&<p className="text-slate-500 text-sm">No institutes registered yet.</p>}</div></div>;
 }
 
@@ -462,40 +553,61 @@ function Settings({inst}){
   const exp=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0)),plan=inst.plan||999;
   return <div className="bg-white rounded-xl p-4 shadow-sm text-sm space-y-2">
     {[['Institute',inst.name],['Plan','₹'+plan+' / month'],['Valid until',exp.toLocaleDateString('en-IN')]].map(([a,b])=><div key={a} className="flex justify-between border-b py-1"><span className="text-slate-500">{a}</span><b>{b}</b></div>)}
-    <p className="text-xs text-slate-500 pt-2">To renew, pay via UPI and send the screenshot on WhatsApp.</p>
-    <div className="flex gap-2 flex-wrap">{[999,5500].map(a=><a key={a} href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${a}&cu=INR`} className={btn()}>Pay ₹{a.toLocaleString('en-IN')}</a>)}
-      <a href={`https://wa.me/${ADMIN_WA}?text=${encodeURIComponent('Hi, I have paid for CoachPro. Institute: '+inst.name)}`} target="_blank" rel="noreferrer" className={btn('green')}>Send Screenshot</a></div></div>;
+    <p className="text-xs text-slate-500 pt-2">To renew, pay via GPay / UPI to future.leiutinent@okicici. Your access is extended after the payment is confirmed.</p>
+    <div className="flex gap-2 flex-wrap">{[999,9999].map(a=><a key={a} href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=${a}&cu=INR`} className={btn()}>Pay ₹{a.toLocaleString('en-IN')}</a>)}</div></div>;
 }
 
 function GateAdmin({d,inst}){
   const ref=React.useRef(null),sec=inst.gate_qr_secret;
-  const [rows,setRows]=useState([]),[err,setErr]=useState(''),[ld,setLd]=useState(true);
+  const [rows,setRows]=useState([]),[err,setErr]=useState(''),[ld,setLd]=useState(true),[mSel,setMSel]=useState('all'),[tSel,setTSel]=useState('all');
   useEffect(()=>{if(ref.current&&sec){ref.current.innerHTML='';new QRCode(ref.current,{text:sec,width:220,height:220})}},[sec]);
+  // Loads EVERY record (1000 at a time) so no month is ever cut off
+  const getAll=async col=>{
+    let all=[],from=0;
+    for(;;){
+      const r=await sb.from('teacher_attendance').select('*').eq('institute_id',inst.id)
+        .order('punch_date',{ascending:false}).order(col,{ascending:false}).order('id',{ascending:false}).range(from,from+999);
+      if(r.error)return {error:r.error};
+      all=all.concat(r.data||[]);
+      if(!r.data||r.data.length<1000)break;
+      from+=1000;
+    }
+    return {data:all};
+  };
   const fetchRows=async()=>{
     setLd(true);
-    const base=()=>sb.from('teacher_attendance').select('*').eq('institute_id',inst.id).order('punch_date',{ascending:false});
-    let r=await base().order('punch_time',{ascending:false}).limit(5000);
-    if(r.error)r=await base().order('punch_at',{ascending:false}).limit(5000);
+    let r=await getAll('punch_time');
+    if(r.error)r=await getAll('punch_at');
     setLd(false);
     if(r.error){setErr(r.error.message);setRows([]);return}
-    setErr('');setRows(r.data||[]);
+    setErr('');setRows(r.data);
   };
   useEffect(()=>{if(inst.id)fetchRows()},[inst.id]);
-  const tm=x=>{
-    if(x.punch_time){const m=String(x.punch_time).match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-      if(m){let h=+m[1];const ap=h>=12?'PM':'AM';h=h%12||12;return String(h).padStart(2,'0')+':'+m[2]+(m[3]?':'+m[3]:'')+' '+ap}
-      return String(x.punch_time)}
-    return x.punch_at?new Date(x.punch_at).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}).toUpperCase():'—';
-  };
   const dt=x=>String(x||'').split('-').reverse().join('/');
+  const months=[...new Set(rows.map(x=>String(x.punch_date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const people=(()=>{const m={};(d.teachers||[]).forEach(t=>{m[String(t.email).toLowerCase()]=t.name});rows.forEach(x=>{const e=String(x.teacher_email||'').toLowerCase();if(e&&!m[e])m[e]=x.teacher_name});return Object.entries(m).map(([email,name])=>({email,name})).sort((a,b)=>a.name.localeCompare(b.name))})();
+  const shown=rows.filter(x=>(mSel==='all'||String(x.punch_date).slice(0,7)===mSel)&&(tSel==='all'||String(x.teacher_email||'').toLowerCase()===tSel));
+  const asc=(a,b)=>String(a.punch_date).localeCompare(String(b.punch_date))||String(a.punch_at||a.punch_time||'').localeCompare(String(b.punch_at||b.punch_time||''));
+  const cells=x=>[dt(x.punch_date),x.teacher_name,x.teacher_email,punchTime(x),x.status||'Present'];
+  const HEAD=['Date','Teacher Name','Teacher Email','Exact Punch-In Time (IST)','Status'];
+  const monthCsv=()=>{
+    if(mSel==='all')return alert('Please choose a month first.');
+    const list=[...shown].sort(asc),ml=monthLabel(mSel);
+    const inMonth=rows.filter(x=>String(x.punch_date).slice(0,7)===mSel),days={};
+    inMonth.forEach(x=>{const e=String(x.teacher_email||'').toLowerCase();(days[e]=days[e]||new Set()).add(x.punch_date)});
+    const who=tSel==='all'?people:people.filter(p=>p.email===tSel);
+    const out=[HEAD,...list.map(cells),[],['Monthly Summary — '+ml],['Teacher Name','Total Present Days in '+ml],...who.map(p=>[p.name,days[p.email]?days[p.email].size:0])];
+    dl('teacher_attendance_'+mSel+'.csv',toCSV(out));
+  };
+  const allCsv=()=>{
+    if(!rows.length)return alert('There are no punch-in records yet.');
+    dl('teacher_attendance_all_time_history.csv',toCSV([HEAD,...[...rows].sort(asc).map(cells)]));
+  };
   const poster=()=>{
     const tmp=document.createElement('div');new QRCode(tmp,{text:sec,width:440,height:440});
     const src=tmp.querySelector('canvas').toDataURL('image/png');
     pdfOut(`<div style="text-align:center;border:6px solid #1e3a8a;padding:36px 20px"><div style="font-size:34px;font-weight:bold;color:#1e3a8a">${esc(inst.name)}</div><div style="font-size:22px;margin:10px 0 24px;letter-spacing:2px">OFFICIAL SCHOOL GATE QR</div><img src="${src}" style="width:440px;height:440px"/><div style="font-size:20px;margin-top:24px;font-weight:bold">Teachers: scan this QR with CoachPro to punch in</div><div style="font-size:14px;margin-top:8px;color:#555">Time and date are recorded automatically by the server (IST). Do not damage or cover this QR.</div></div>`,'Gate_QR_Poster',false);
   };
-  const csv=()=>{const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
-    const out=[['teacher_name','teacher_email','punch_date','punch_time','status'],...rows.map(x=>[x.teacher_name,x.teacher_email,dt(x.punch_date),tm(x),x.status])];
-    dl('teacher_attendance_log.csv','\uFEFF'+out.map(r=>r.map(q).join(',')).join('\n'))};
   const c="border border-slate-300 px-2 py-1.5";
   return <div>
     <div className="bg-white rounded-xl p-4 shadow-sm mb-3 text-center">
@@ -504,13 +616,21 @@ function GateAdmin({d,inst}){
         <button onClick={poster} className={btn()}>Download / Print Gate QR Poster</button>
         <p className="text-xs text-slate-500 mt-2">Print this poster and paste it at the school entrance gate. Teachers scan it from their phone to punch in.</p></div>
       :<p className="text-sm text-red-600 mt-2">Gate QR is not available yet. Run coachpro_fix_roles.sql in Supabase and refresh.</p>}</div>
-    <div className="flex flex-wrap justify-between items-center gap-2 mb-2"><h3 className="font-bold">Teacher Attendance Register <span className="text-xs font-normal text-slate-500">(read-only)</span></h3>
-      <div className="flex gap-2"><button onClick={fetchRows} className="px-3 py-2 rounded-lg text-sm bg-white border">{ld?'Loading…':'Refresh'}</button><button onClick={csv} className={btn('green')}>Export Excel (.CSV) Sheet</button></div></div>
+    <div className="bg-white rounded-xl p-3 shadow-sm mb-3">
+      <h3 className="font-bold mb-2">Teacher Attendance Register <span className="text-xs font-normal text-slate-500">(permanent, read-only)</span></h3>
+      <div className="grid grid-cols-2 gap-x-3">
+        <F l="Month & Year"><select className={inp} value={mSel} onChange={e=>setMSel(e.target.value)}><option value="all">All Time (Complete History)</option>{months.map(m=><option key={m} value={m}>{monthLabel(m)}</option>)}</select></F>
+        <F l="Teacher"><select className={inp} value={tSel} onChange={e=>setTSel(e.target.value)}><option value="all">All Teachers</option>{people.map(p=><option key={p.email} value={p.email}>{p.name}</option>)}</select></F></div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <button onClick={monthCsv} disabled={mSel==='all'} className={btn('green')+' disabled:opacity-50'}>Download Selected Month Excel (.CSV)</button>
+        <button onClick={allCsv} className={btn()}>Download Complete All-Time History (.CSV)</button></div>
+      <p className="text-xs text-slate-500 mt-2">{mSel==='all'?'Choose a month to enable the monthly download (it includes a Monthly Summary of present days per teacher). ':'The monthly file follows the Teacher filter above. '}The all-time file always contains every record from day 1 to today.</p></div>
     {err&&<div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm mb-2">Could not load the register: {err}</div>}
+    <div className="flex justify-between items-center mb-2"><div className="text-sm text-slate-600">Showing <b>{shown.length}</b> of {rows.length} records</div><button onClick={fetchRows} className="px-3 py-1.5 rounded-lg text-sm bg-white border">{ld?'Loading…':'Refresh'}</button></div>
     <div className="overflow-x-auto bg-white rounded-xl shadow-sm"><table className="w-full text-sm border-collapse">
-      <thead className="bg-slate-100"><tr>{['Teacher Name','Email','Date','Punch-In Time (IST)','Status'].map(h=><th key={h} className={c+' text-left whitespace-nowrap'}>{h}</th>)}</tr></thead>
-      <tbody>{rows.map(x=><tr key={x.id}><td className={c}>{x.teacher_name}</td><td className={c}>{x.teacher_email}</td><td className={c}>{dt(x.punch_date)}</td><td className={c+' whitespace-nowrap'}>{tm(x)}</td><td className={c+' text-green-700 font-semibold'}>{x.status}</td></tr>)}
-        {!rows.length&&<tr><td colSpan="5" className="px-2 py-4 text-center text-slate-500">{ld?'Loading…':'No punch-in records yet.'}</td></tr>}</tbody></table></div></div>;
+      <thead className="bg-slate-100"><tr>{['Date','Teacher Name','Email','Exact Punch-In Time (IST)','Status'].map(h=><th key={h} className={c+' text-left whitespace-nowrap'}>{h}</th>)}</tr></thead>
+      <tbody>{shown.map(x=><tr key={x.id}><td className={c}>{dt(x.punch_date)}</td><td className={c}>{x.teacher_name}</td><td className={c}>{x.teacher_email}</td><td className={c+' whitespace-nowrap'}>{punchTime(x)}</td><td className={c+' text-green-700 font-semibold'}>{x.status||'Present'}</td></tr>)}
+        {!shown.length&&<tr><td colSpan="5" className="px-2 py-4 text-center text-slate-500">{ld?'Loading…':'No punch-in records for this selection.'}</td></tr>}</tbody></table></div></div>;
 }
 
 function GateScan({close}){
@@ -546,7 +666,7 @@ function GateScan({close}){
 
 function Dashboard({inst,role,assigned,tname}){
   const P=role==='principal';
-  const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],exams:[],inq:[],teachers:[],tatt:[]}),[add,setAdd]=useState(false),[scan,setScan]=useState(false);
+  const [tab,setTab]=useState('home'),[d,setD]=useState({students:[],att:[],exams:[],inq:[],teachers:[],tatt:[]}),[add,setAdd]=useState(false),[scan,setScan]=useState(false),[expOpen,setExpOpen]=useState(true);
   const reload=async()=>{
     const q=[sb.from('students').select('*').order('name'),sb.from('attendance').select('*').eq('att_date',today()),sb.from('exam_marks').select('*')];
     if(P)q.push(sb.from('inquiries').select('*').order('created_at',{ascending:false}),sb.from('teachers').select('*').order('name'));
@@ -560,6 +680,7 @@ function Dashboard({inst,role,assigned,tname}){
   const pend=d.students.reduce((x,s)=>x+Math.max(0,(+s.fee||0)-(+s.paid||0)),0);
   const pres=d.att.filter(a=>a.status==='present').length,pct=d.att.length?Math.round(pres*100/d.att.length):0;
   const ist=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),tp=d.tatt.find(x=>x.punch_date===ist);
+  const expD=new Date(Math.max(new Date(inst.trial_ends),inst.paid_until?new Date(inst.paid_until):0)),daysRemaining=Math.ceil((expD-new Date())/(1000*60*60*24));
   const tabs=P?[['home','Home'],['students','Students'],['fees','Fees'],['attendance','Attendance'],['exams','Exams & Report Cards'],['teachers','Manage Teachers'],['gate','Gate QR & Staff Attendance'],['inquiries','Inquiries'],['settings','Settings']]:[['home','Home'],['students','Students'],['attendance','Attendance'],['exams','Exams & Report Cards']];
   const kpis=P?[['Active Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700'],['Pending Fees',inr(pend),'text-amber-700'],['New Inquiries',d.inq.length,'text-violet-700']]:[['My Students',d.students.length,'text-indigo-700'],["Today's Attendance",pct+'%','text-green-700']];
   const p={d,inst,reload};
@@ -572,13 +693,18 @@ function Dashboard({inst,role,assigned,tname}){
       <div className="flex flex-wrap gap-2">{P&&<button onClick={()=>setAdd(true)} className={btn()}>+ Add Student</button>}<button onClick={()=>setTab('attendance')} className={btn('green')}>Mark Batch Attendance</button>{!P&&<button onClick={()=>setTab('exams')} className={btn()}>Enter Exam Marks</button>}{P&&<button onClick={()=>setTab('inquiries')} className={btn('violet')}>+ Add Inquiry</button>}</div></div>}
     {tab==='students'&&<Students {...p} ro={!P} openAdd={()=>setAdd(true)}/>}
     {P&&tab==='fees'&&<Fees {...p}/>}
-    {tab==='attendance'&&<Attendance {...p}/>}
+    {tab==='attendance'&&<AttendanceBoard {...p}/>}
     {tab==='exams'&&<Exams {...p}/>}
     {P&&tab==='teachers'&&<Teachers {...p}/>}
     {P&&tab==='gate'&&<GateAdmin {...p}/>}
     {P&&tab==='inquiries'&&<Inquiries {...p}/>}
     {P&&tab==='settings'&&<Settings inst={inst}/>}
     {scan&&<GateScan close={()=>{setScan(false);reload()}}/>}
+    {P&&expOpen&&daysRemaining>=1&&daysRemaining<=3&&<Modal title="Subscription Expiry Warning" close={()=>setExpOpen(false)}><div className="text-center">
+      <p className="font-bold text-lg text-red-700 my-3">⚠️ Alert: Only {daysRemaining} Day(s) Remaining in your subscription! Renew now to avoid service interruption.</p>
+      <div className="bg-indigo-50 rounded-xl p-3 mb-3"><div className="text-xs text-slate-500">GPay UPI ID</div><div className="font-mono font-bold text-indigo-700 break-all">{MY_UPI_ID}</div><button onClick={()=>{navigator.clipboard&&navigator.clipboard.writeText(MY_UPI_ID)}} className="mt-2 text-sm px-3 py-1 rounded-lg bg-white border">Copy UPI ID</button></div>
+      <a href={`upi://pay?pa=${MY_UPI_ID}&pn=CoachPro&am=999&cu=INR`} className={btn()+' block mb-2'}>Pay via GPay / UPI</a>
+      <button onClick={()=>setExpOpen(false)} className="w-full py-3 rounded-xl bg-slate-100 font-semibold">Close / Continue Working (×)</button></div></Modal>}
     {P&&add&&<StudentModal inst={inst} close={()=>setAdd(false)} done={()=>{setAdd(false);reload()}}/>}</div>;
 }
 
@@ -617,7 +743,7 @@ function TeacherDashboard({ctx}){
         sb.rpc('get_my_class_students'),
         sb.from('attendance').select('*').eq('att_date',today()),
         sb.from('exam_marks').select('*'),
-        sb.from('teacher_attendance').select('*').order('punch_at',{ascending:false}).limit(60)]);
+        sb.from('teacher_attendance').select('*').order('punch_at',{ascending:false}).limit(200)]);
       const g=x=>(x&&Array.isArray(x.data))?x.data:[];
       let sl=g(s);
       if(s&&s.error){const fb=await (base.id?sb.from('students').select('*').eq('institute_id',base.id):sb.from('students').select('*'));sl=g(fb).filter(x=>classMatch(assigned,x.course))}
@@ -634,7 +760,7 @@ function TeacherDashboard({ctx}){
   const inst={...base,id:iid,name:sname};
   const pres=d.att.filter(a=>a.status==='present').length,pct=d.att.length?Math.round(pres*100/d.att.length):0;
   const ist=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}),tp=d.tatt.find(x=>x.punch_date===ist);
-  const tabs=[['home','Home'],['attendance','Mark Attendance'],['exams','Exam Marks'],['students','My Students']];
+  const tabs=[['home','Home'],['attendance','Mark Attendance'],['exams','Exam Marks'],['students','My Students'],['punch','My Punch-In History']];
   const p={d:{...d,inq:[],teachers:[]},inst,reload};
   return <div className="max-w-3xl mx-auto p-3 pb-10">
     <div className="relative z-40 bg-white rounded-xl shadow-sm p-3 mb-3 flex justify-between items-center gap-3">
@@ -652,6 +778,9 @@ function TeacherDashboard({ctx}){
     {tab==='attendance'&&<Attendance key={active} {...p}/>}
     {tab==='exams'&&<Exams key={active} {...p}/>}
     {tab==='students'&&<Students key={active} {...p} ro={true} openAdd={()=>{}}/>}
+    {tab==='punch'&&<div className="bg-white rounded-xl shadow-sm overflow-x-auto"><table className="w-full text-sm border-collapse"><thead className="bg-slate-100"><tr>{['Date','Punch-In Time (IST)','Status'].map(h=><th key={h} className="border border-slate-300 px-3 py-2 text-left whitespace-nowrap">{h}</th>)}</tr></thead>
+      <tbody>{d.tatt.map(x=><tr key={x.id}><td className="border border-slate-300 px-3 py-2">{String(x.punch_date||'').split('-').reverse().join('/')}</td><td className="border border-slate-300 px-3 py-2 whitespace-nowrap">{punchTime(x)}</td><td className="border border-slate-300 px-3 py-2 text-green-700 font-semibold">{x.status||'Present'}</td></tr>)}
+        {!d.tatt.length&&<tr><td colSpan="3" className="px-3 py-5 text-center text-slate-500">No punch-ins yet. Scan the school gate QR to record your first one.</td></tr>}</tbody></table></div>}
     {scan&&<GateScan close={()=>{setScan(false);reload()}}/>}
   </div>;
 }
